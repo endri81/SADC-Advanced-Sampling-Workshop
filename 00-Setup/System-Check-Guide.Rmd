@@ -1,0 +1,80 @@
+---
+title: "Advanced Sampling Methods for Household Surveys"
+subtitle: "Step 3: Final System Check"
+author: "Dr. Endri Raço, PhD"
+date: "November 2025"
+output:
+  xaringan::moon_reader:
+    css: ["default", "css/sadc-theme.css"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%"
+---
+
+class: title-slide, center, middle
+
+# Almost there!
+## ✅ Final System Check
+
+---
+class: inverse, center, middle
+
+# Why run a final check?
+
+---
+
+# A Pre-Flight Check for Your R Environment ✈️
+
+You have installed R, RStudio, and all the necessary packages. Excellent!
+
+--
+
+This final script is a quick, automated check to **verify** that everything is working together correctly before we begin the workshop.
+
+--
+
+It confirms that your system is <span class=highlight>100% ready for Day 1</span>.
+
+---
+
+# What Does the Script Check?
+
+The script quickly verifies three key components:
+
+1.  **R & RStudio Versions:** Confirms the core software is running.
+
+--
+
+2.  **`tidyverse` Package:** Ensures the main toolkit for data manipulation is available.
+
+--
+
+3.  **`survey` Package:** Confirms the most critical toolkit for our workshop is ready to go.
+
+---
+class: inverse, center, middle
+
+# How to Run the System Check
+### (It's the same simple process as before)
+
+---
+
+# Step 1: Find and Open the Script 📂
+
+In the RStudio **Files** pane (bottom-right):
+
+1.  Stay in the `00-Setup` folder.
+
+2.  Find and **click** on the file named `System-Check.R` to open it.
+
+.center[
+```text
+SADC-Advanced-Sampling-Workshop/
+└── 00-Setup/
+    ├── Package-Requirements.R
+    ├── System-Check.R          <-- THIS ONE
+    └── ...
