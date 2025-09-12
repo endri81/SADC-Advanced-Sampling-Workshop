@@ -1,0 +1,87 @@
+---
+title: "Advanced Sampling Methods for Household Surveys"
+subtitle: "Step 2: Package Installation Guide"
+author: "Dr. Endri Raço, PhD"
+date: "November 2025"
+output:
+  xaringan::moon_reader:
+    css: ["default", "css/sadc-theme.css"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%"
+---
+
+class: title-slide, center, middle
+
+# Let's Get Your System Ready!
+## 📦 Package Installation Guide
+
+---
+class: inverse, center, middle
+
+# First, what is an R Package?
+
+---
+
+# Think of Packages as Toolkits 🧰
+
+.pull-left[
+- By default, R is powerful, but it comes with a basic set of tools.
+
+- **Packages** are community-created add-ons that provide specialized functions for specific tasks.
+
+- We must install these "toolkits" before we can use them in our workshop.
+]
+.pull-right[
+### Our Workshop Analogy:
+- **R** is your new, empty workshop.
+- **Packages** are your toolkits:
+  - `survey` (for complex sampling)
+  - `tidyverse` (for data carpentry)
+  - `sf` (for map-making)
+]
+
+---
+
+# The Key Packages We Need
+
+The script we will run installs several crucial packages, including:
+
+- `tidyverse`: For powerful data manipulation (`dplyr`) and visualization (`ggplot2`).
+
+- `survey`: The <span class=highlight>most important</span> package in R for complex survey analysis.
+
+- `sf`: For working with modern spatial data (maps and GIS).
+
+- `readxl`: For importing data directly from Excel files.
+
+- `xaringan`: The package used to create these very slides!
+
+---
+class: inverse, center, middle
+
+# How to Install Everything at Once
+### Using the script I've prepared for you.
+
+---
+
+# Step 1: Find the Script 📂
+
+In the RStudio **Files** pane (usually bottom-right):
+
+1.  Make sure you are in the `00-Setup` folder.
+
+2.  You will see a file named `Package-Requirements.R`.
+
+.center[
+```text
+SADC-Advanced-Sampling-Workshop/
+└── 00-Setup/
+    ├── css/
+    ├── R-Installation-Guide.Rmd
+    ├── Package-Requirements.R  <-- THIS IS THE SCRIPT
+    └── ...
