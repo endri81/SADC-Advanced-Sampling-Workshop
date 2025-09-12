@@ -1,0 +1,124 @@
+---
+title: "Advanced Sampling Methods for Household Surveys"
+subtitle: "Pre-Workshop: R and RStudio Installation"
+author: "Dr. Endri Raço, PhD"
+date: "November 2025"
+output:
+  xaringan::moon_reader:
+    css: ["default", "css/sadc-theme.css"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%"
+---
+
+class: title-slide, center, middle
+
+# Welcome! 
+## 💻 R & RStudio Installation Guide
+
+---
+class: inverse, center, middle
+
+# Objective: A Smooth Start for Everyone
+
+---
+
+# Why do this now?
+
+- ✅ Maximize our time for <span class=highlight>advanced sampling methods</span>.
+
+--
+
+- ✅ Minimize time spent on technical troubleshooting during the workshop.
+
+--
+
+- ✅ Create a <span class=highlight>consistent and reproducible</span> environment for all participants.
+
+---
+
+# R vs. RStudio: The Engine & The Dashboard
+
+.pull-left[
+###  R  FIRST
+- ⚙️ The **programming language**.
+- The statistical "engine".
+- **Must be installed first.**
+]
+
+.pull-right[
+### RStudio SECOND
+- 🖥️ An **Integrated Development Environment (IDE)**.
+- A user-friendly "dashboard" for R.
+- **Must be installed second.**
+]
+
+---
+class: inverse
+
+# Step 1: Install the Engine (R) ⚙️
+
+Go to the [**Comprehensive R Archive Network (CRAN)**](https://cran.r-project.org/)
+
+---
+
+# Step 1: Install R (continued)
+
+### For Windows Users 
+1. Click `Download R for Windows`.
+2. Click the `base` link.
+3. Click the large "Download R-X.X.X for Windows" link.
+4. Run the installer and **accept all default settings**.
+
+--
+
+### For macOS Users
+1. Click `Download R for (Mac)OS X`.
+2. Select the correct `.pkg` file for your Mac (Intel or Apple Silicon).
+3. Run the installer and **accept all default settings**.
+
+---
+class: inverse
+
+# Step 2: Install the Dashboard (RStudio) 🖥️
+
+Go to the [**RStudio Desktop download page**](https://posit.co/download/rstudio-desktop/)
+
+---
+
+# Step 2: Install RStudio (continued)
+
+1. The website will automatically suggest the correct installer for your system.
+
+2. Click the download button for **RStudio Desktop** (the free version).
+
+3. Run the downloaded installer.
+
+4. **Accept all default settings**. It's that simple!
+
+---
+class: inverse
+
+# Step 3: Verify Your Installation ✅
+
+---
+
+# Final Check
+
+1. Open the **RStudio** application (not R itself).
+
+2. Look at the **Console** pane (usually bottom-left).
+
+3. You should see text indicating the R version you installed.
+
+--
+
+4. Type `1 + 1` in the console and press **Enter**.
+
+```r
+> 1 + 1
+[1] 2
