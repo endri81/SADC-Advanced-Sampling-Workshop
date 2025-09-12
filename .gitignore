@@ -1,0 +1,31 @@
+#===============================================================================
+# SADC Advanced Sampling Methods Workshop
+# .gitignore File
+# Author: Dr. Endri Raço, PhD
+# Date: November 2025
+# Purpose: To specify intentionally untracked files to be ignored by Git.
+#===============================================================================
+
+# R files
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Output files
+*.html
+*.pdf
+*.png
+*.jpg
+
+# Cache directories
+*_cache/
+*_files/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+~$*
+*.tmp
