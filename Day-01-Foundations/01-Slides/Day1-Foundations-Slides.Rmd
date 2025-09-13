@@ -1,0 +1,3286 @@
+---
+title: "Advanced Sampling Methods for Household Surveys"
+subtitle: "Day 1: Foundations of Survey Sampling & Statistical Theory"
+author: |
+  Dr. Endri Raço, PhD  
+  Survey Methodology Expert  
+  SADC Regional Statistics Project
+date: "November 2025"
+output:
+  xaringan::moon_reader:
+    css: ["default", "css/sadc-theme.css", "css/sadc-fonts.css"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%"
+---
+
+```{r setup, include=FALSE}
+# Complete setup chunk with all required libraries and settings
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.retina = 3, 
+  fig.align = 'center', 
+  out.width = '80%', 
+  cache = FALSE,
+  comment = "#>"
+)
+
+# Handle package conflicts
+if("scales" %in% loadedNamespaces()) {
+  # Don't unload, just proceed
+}
+
+# Load all required libraries
+library(xaringan)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(survey)
+library(sampling)
+library(plotly)
+library(DT)
+library(knitr)
+library(kableExtra)
+library(readr)
+library(tibble)
+library(purrr)
+library(forcats)
+# scales is already loaded via ggplot2
+
+# Set theme for all plots
+theme_sadc <- theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", color = "#003F7F"),
+    plot.subtitle = element_text(size = 14, color = "#555555"),
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 10),
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill = NA, color = "#CCCCCC")
+  )
+
+theme_set(theme_sadc)
+
+# Set color palette
+sadc_colors <- c("#003F7F", "#0066CC", "#4A90E2", "#7FB3E8", "#B3D4F5", "#FFA500", "#FF6B35", "#E74C3C")
+
+# Set seed for reproducibility
+set.seed(20251101)
+```
+
+class: center, middle, inverse
+
+# Advanced Sampling Methods for Household Surveys
+
+## Day 1: Foundations of Survey Sampling
+
+### SADC Regional Statistics Project
+
+#### Dr. Endri Raço, PhD
+#### November 2025
+
+---
+
+# Welcome to Our 5-Day Journey! 
+
+## Let's Start with Introductions
+
+.pull-left[
+### About Me
+👋 Dr. Endri Raço
+- 14+ years in survey methodology
+- Trained 500+ statisticians globally
+- Worked in Albania, Kosovo, Moldova
+- Passionate about data quality!
+
+### My Goal
+Transform complex statistics into practical skills you can use immediately
+]
+
+.pull-right[
+### About You
+Let's go around the room:
+- Your name and organization
+- Your experience with surveys
+- One challenge you face
+- What you hope to learn
+
+💡 **Remember**: No question is too basic!
+]
+
+---
+
+# Why Are You Here?
+
+## The Power of Good Sampling
+
+```{r power-of-sampling, echo=FALSE, fig.height=5}
+# Visual showing impact of good vs bad sampling
+set.seed(123)
+good_sample <- rnorm(100, mean = 50, sd = 10)
+biased_sample <- rnorm(100, mean = 65, sd = 5)
+
+data_comp <- data.frame(
+  value = c(good_sample, biased_sample),
+  type = rep(c("Good Sampling", "Poor Sampling"), each = 100)
+)
+
+ggplot(data_comp, aes(x = value, fill = type)) +
+  geom_histogram(alpha = 0.7, position = "identity", bins = 30) +
+  geom_vline(xintercept = 50, linetype = "dashed", size = 1.5) +
+  scale_fill_manual(values = c("Good Sampling" = sadc_colors[2], 
+                               "Poor Sampling" = sadc_colors[6])) +
+  labs(title = "The Difference Good Sampling Makes",
+       subtitle = "True population mean = 50 (dashed line)",
+       x = "Estimated Value", y = "Frequency") +
+  theme(legend.position = "top")
+```
+
+**Poor sampling costs millions in wrong policy decisions!**
+
+---
+
+# Your Journey Over 5 Days
+
+## Building Expertise Step by Step
+
+```{r journey-visual, echo=FALSE, fig.height=5.5}
+journey_data <- data.frame(
+  day = 1:5,
+  topic = c("Foundations", "Stratified", "Cluster", "Complex", "Integration"),
+  complexity = c(20, 40, 60, 80, 100),
+  confidence = c(30, 50, 70, 85, 95)
+)
+
+journey_long <- journey_data %>%
+  pivot_longer(cols = c(complexity, confidence), 
+               names_to = "measure", values_to = "level")
+
+ggplot(journey_long, aes(x = day, y = level, color = measure)) +
+  geom_line(size = 2) +
+  geom_point(size = 4) +
+  scale_color_manual(values = c("complexity" = sadc_colors[6], 
+                                "confidence" = sadc_colors[2]),
+                     labels = c("Your Confidence", "Topic Complexity")) +
+  scale_x_continuous(breaks = 1:5, 
+                     labels = c("Day 1\nFoundations", "Day 2\nStratified", 
+                               "Day 3\nCluster", "Day 4\nComplex", "Day 5\nIntegration")) +
+  labs(title = "Your Learning Journey This Week",
+       subtitle = "Watch your confidence grow as we tackle complex topics together!",
+       x = "", y = "Level (%)", color = "") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Today's Roadmap
+
+## 8 Hours, 8 Sessions, Solid Foundation
+
+### Morning Sessions (8:00 - 12:00)
+🎯 **Hour 1**: What is sampling and why it matters
+📐 **Hour 2**: The math (made simple!)
+💻 **Hour 3**: Setting up R (step by step)
+🌍 **Hour 4**: Real SADC examples
+
+### Afternoon Sessions (13:00 - 17:00)
+📊 **Hour 5**: Calculating errors correctly
+🌐 **Hour 6**: International standards
+✍️ **Hour 7**: Hands-on practice
+🎓 **Hour 8**: Bringing it all together
+
+---
+
+# Learning Approach
+
+## How We'll Make This Stick
+
+### 1. **See It** 👀
+- Visual examples
+- Real data demonstrations
+- Live coding
+
+### 2. **Try It** 💪
+- Immediate practice
+- Work with partners
+- Make mistakes safely
+
+### 3. **Apply It** 🚀
+- Your country's context
+- Real problems
+- Practical solutions
+
+---
+
+# Ground Rules for Success
+
+## Let's Create the Best Learning Environment
+
+### ✅ **DO:**
+- Ask questions anytime
+- Share your experiences
+- Help your neighbors
+- Take breaks when needed
+- Use real examples from your work
+
+### ❌ **DON'T:**
+- Worry about "dumb" questions
+- Hide confusion
+- Work in isolation
+- Skip exercises
+- Leave with doubts
+
+---
+
+# Quick Ice Breaker
+
+## Find Someone Who...
+
+Stand up and find someone who:
+
+1. 🏢 Works in a different department than you
+2. 📊 Has conducted a household survey
+3. 💻 Has never used R before
+4. 🌍 Is from a different country
+5. 📈 Wants to improve data quality
+
+**You have 3 minutes!**
+
+*This helps us build our learning network*
+
+---
+
+class: center, middle, inverse
+
+# Session 1: Understanding Survey Sampling
+## Making Sense of the Basics
+### Hour 1: 8:00 - 9:00
+
+---
+
+# Let's Start with a Story
+
+## The Census That Almost Failed
+
+### Country X in 2020 attempted a full census:
+- 💰 **Budget**: $50 million
+- ⏱️ **Time**: 2 years planning, 6 months field
+- 👥 **Staff**: 10,000 enumerators
+- 📉 **Coverage**: Only 78% completed
+- 😞 **Result**: Outdated by publication
+
+### Meanwhile, Country Y used sampling:
+- 💰 **Budget**: $2 million
+- ⏱️ **Time**: 3 months total
+- 👥 **Staff**: 200 enumerators
+- 📊 **Coverage**: 95% response rate
+- 😊 **Result**: Timely, accurate data
+
+---
+
+# What Exactly IS Survey Sampling?
+
+## Think of it Like Cooking Soup! 🍲
+
+```{r soup-analogy, echo=FALSE, fig.height=4.5}
+# Create visual analogy
+analogy_data <- data.frame(
+  stage = c("Population\n(Full Pot)", "Sample\n(Spoonful)", "Estimate\n(Taste)", "Decision\n(Season?)"),
+  level = c(100, 10, 10, 100),
+  x = 1:4
+)
+
+ggplot(analogy_data, aes(x = x, y = level)) +
+  geom_col(fill = sadc_colors[3], width = 0.5) +
+  geom_text(aes(label = stage), vjust = -0.5, size = 5, fontface = "bold") +
+  geom_segment(aes(x = 1.5, xend = 2.5, y = 50, yend = 50), 
+               arrow = arrow(length = unit(0.3, "cm")), size = 1.5, color = sadc_colors[6]) +
+  geom_segment(aes(x = 2.5, xend = 3.5, y = 50, yend = 50), 
+               arrow = arrow(length = unit(0.3, "cm")), size = 1.5, color = sadc_colors[6]) +
+  ylim(0, 120) +
+  theme_void() +
+  labs(title = "Survey Sampling is Like Tasting Soup",
+       subtitle = "You don't need to eat the whole pot to know if it needs salt!")
+```
+
+**Key Insight**: A small, well-chosen sample tells us about the whole
+
+---
+
+# Breaking Down the Definition
+
+## Survey Sampling Has 4 Essential Parts
+
+### 1. 🎯 **TARGET POPULATION**
+Who or what you want to study
+- *Example*: All households in Zimbabwe
+
+### 2. 📋 **SAMPLING FRAME**
+Your list of the population
+- *Example*: List of all residential addresses
+
+### 3. 🎲 **SELECTION METHOD**
+How you choose who to survey
+- *Example*: Random selection using computer
+
+### 4. 📏 **ESTIMATION**
+How you calculate population values
+- *Example*: Multiply sample average by population size
+
+---
+
+# Population vs Sample
+
+## Understanding the Difference
+
+```{r pop-vs-sample, echo=FALSE, fig.height=5}
+set.seed(456)
+# Create population
+pop_size <- 1000
+sample_size <- 50
+
+pop_data <- data.frame(
+  id = 1:pop_size,
+  x = runif(pop_size, 0, 10),
+  y = runif(pop_size, 0, 10),
+  income = rlnorm(pop_size, 10, 0.5),
+  selected = c(rep(TRUE, sample_size), rep(FALSE, pop_size - sample_size))
+)
+
+ggplot(pop_data, aes(x, y)) +
+  geom_point(aes(color = selected, size = selected), alpha = 0.6) +
+  scale_color_manual(values = c("FALSE" = "lightgray", "TRUE" = sadc_colors[2]),
+                     labels = c("Population (N=1000)", "Sample (n=50)")) +
+  scale_size_manual(values = c("FALSE" = 2, "TRUE" = 4), guide = "none") +
+  labs(title = "From Many to Few: Population to Sample",
+       subtitle = "Each dot represents a household",
+       color = "") +
+  theme(legend.position = "top") +
+  annotate("text", x = 2, y = 9, label = "We study these 50...", 
+           size = 5, color = sadc_colors[2], fontface = "bold") +
+  annotate("text", x = 8, y = 1, label = "...to learn about all 1000", 
+           size = 5, color = "gray40", fontface = "bold")
+```
+
+---
+
+# Why Don't We Just Ask Everyone?
+
+## The Problems with a Census
+
+### 💸 **COST**
+- Census: $20-50 per person
+- Sample: $2-5 per person for better data
+- *Your budget goes 10x further!*
+
+### ⏰ **TIME**  
+- Census: 2-3 years from planning to results
+- Sample: 3-6 months total
+- *Get answers while they're still relevant!*
+
+### 📊 **QUALITY**
+- Census: Rushed, tired interviewers
+- Sample: Well-trained, supervised teams
+- *Better training = better data!*
+
+---
+
+# Real Cost Comparison
+
+## Let's Do the Math for Your Country
+
+```{r cost-comparison, echo=FALSE, fig.height=5}
+# Cost comparison visualization
+cost_data <- data.frame(
+  Method = rep(c("Census", "Sample Survey"), each = 4),
+  Category = rep(c("Planning", "Data Collection", "Processing", "Total"), 2),
+  Cost_Millions = c(5, 35, 10, 50, 0.5, 2, 0.5, 3),
+  Time_Months = c(12, 6, 6, 24, 2, 2, 1, 5)
+)
+
+ggplot(cost_data %>% filter(Category == "Total"), 
+       aes(x = Method, y = Cost_Millions, fill = Method)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0("$", Cost_Millions, "M")), 
+            vjust = -0.5, size = 6, fontface = "bold") +
+  scale_fill_manual(values = c(sadc_colors[6], sadc_colors[2])) +
+  labs(title = "Census vs Sample Survey: Total Cost",
+       subtitle = "For a country of 10 million people",
+       y = "Cost (Millions USD)", x = "") +
+  theme(legend.position = "none") +
+  ylim(0, 60)
+```
+
+**Sample surveys give you 94% savings!**
+
+---
+
+# But Can We Trust a Sample?
+
+## The Magic of Probability Theory
+
+### Imagine a Bag of Marbles
+- 🔴 600 red marbles (60%)
+- 🔵 400 blue marbles (40%)
+- Total: 1000 marbles
+
+### If you randomly pick 100 marbles:
+- Expected: ~60 red, ~40 blue
+- Actual: Maybe 58 red, 42 blue
+- **Close enough to make good decisions!**
+
+### The Guarantee:
+With proper sampling, we can be 95% confident our estimate is within ±3% of the truth
+
+---
+
+# Let's Simulate This!
+
+## See Sampling in Action
+
+```{r simulation-demo, echo=TRUE, fig.height=4}
+# Let's simulate drawing samples
+set.seed(789)
+population <- c(rep("Employed", 7000), rep("Unemployed", 3000))  # 30% unemployment
+
+# Draw 20 different samples
+sample_results <- replicate(20, {
+  sample_draw <- sample(population, 500)
+  sum(sample_draw == "Unemployed") / 500 * 100
+})
+
+# Plot results
+hist(sample_results, breaks = 10, col = sadc_colors[3],
+     main = "20 Sample Estimates of Unemployment Rate",
+     xlab = "Estimated Unemployment (%)", 
+     sub = "True rate = 30%")
+abline(v = 30, col = "red", lwd = 3, lty = 2)
+```
+
+**See? All samples are close to the truth!**
+
+---
+
+# Types of Information We Collect
+
+## What Can Surveys Tell Us?
+
+### 📊 **COUNTS & TOTALS**
+- Total unemployed persons
+- Number of households in poverty
+- Children not in school
+
+### 📈 **PROPORTIONS & RATES**
+- Unemployment rate
+- Literacy rate  
+- Vaccination coverage
+
+### 📐 **AVERAGES & MEDIANS**
+- Average household income
+- Median age at marriage
+- Mean household size
+
+### 🔍 **RELATIONSHIPS**
+- Education vs income
+- Urban vs rural differences
+- Trends over time
+
+---
+
+# The SADC Context
+
+## Our Region's Survey Landscape
+
+```{r sadc-surveys, echo=FALSE, fig.height=5}
+survey_types <- data.frame(
+  Survey = c("DHS", "Labour Force", "Household Budget", "Agriculture", "Census"),
+  Frequency_Years = c(5, 0.25, 3, 1, 10),
+  Sample_Size_1000s = c(10, 30, 8, 15, 3000),
+  Countries_Using = c(15, 12, 14, 15, 16)
+)
+
+ggplot(survey_types, aes(x = Frequency_Years, y = Sample_Size_1000s)) +
+  geom_point(aes(size = Countries_Using, color = Survey), alpha = 0.7) +
+  geom_text(aes(label = Survey), vjust = -1.5, size = 4) +
+  scale_x_log10() +
+  scale_size_continuous(range = c(5, 20)) +
+  scale_color_manual(values = sadc_colors) +
+  labs(title = "Major Surveys in SADC Region",
+       subtitle = "Bubble size = number of countries conducting",
+       x = "Frequency (years between surveys, log scale)",
+       y = "Typical Sample Size (1000s of households)") +
+  theme(legend.position = "none")
+```
+
+---
+
+# Common SADC Challenges
+
+## What Makes Our Region Unique?
+
+### 🏘️ **Informal Settlements**
+- No addresses
+- Rapid changes
+- Access issues
+- **Solution**: GPS mapping, local guides
+
+### 🚶 **Mobile Populations**
+- Cross-border workers
+- Seasonal migration
+- Pastoral communities
+- **Solution**: Multiple visit attempts, seasonal adjustment
+
+### 📱 **Rapid Urbanization**
+- Outdated frames
+- New developments
+- Mixed land use
+- **Solution**: Regular frame updates, satellite imagery
+
+---
+
+# Real Example: Zimbabwe Labour Force Survey
+
+## How It Actually Works
+
+### The Challenge:
+- Estimate unemployment for 10 provinces
+- Quarterly updates needed
+- Budget: $500,000 per year
+- Required precision: ±2% nationally
+
+### The Design:
+```{r zimbabwe-example, echo=FALSE, fig.height=4}
+zim_data <- data.frame(
+  Province = c("Harare", "Bulawayo", "Manicaland", "Mashonaland", "Others"),
+  Sample = c(3000, 2500, 2000, 2000, 5500),
+  Population = c(2.1, 0.7, 1.8, 1.5, 4.9)
+)
+
+ggplot(zim_data, aes(x = Population, y = Sample)) +
+  geom_point(size = 5, color = sadc_colors[2]) +
+  geom_text(aes(label = Province), vjust = -1.5) +
+  labs(title = "Sample Allocation Across Provinces",
+       x = "Population (millions)", y = "Sample Size (households)") +
+  geom_smooth(method = "lm", se = FALSE, color = sadc_colors[6])
+```
+
+---
+
+# Quality: The Foundation of Trust
+
+## Why Data Quality Matters
+
+### Real Story from Country X:
+> "Unemployment was reported as 15% in 2023. Government created 500,000 jobs program. Next survey: unemployment was 25%! What happened?"
+
+### The Investigation Found:
+- ❌ Different definitions used
+- ❌ Frame excluded new areas
+- ❌ Interviewers poorly trained
+- ❌ No quality checks
+
+### The Cost:
+- $50 million wasted program
+- Lost public trust
+- International credibility damaged
+
+**One bad survey can destroy years of credibility!**
+
+---
+
+# The Total Survey Error Framework
+
+## All Errors Matter, Not Just Sampling!
+
+```{r tse-detailed, echo=FALSE, fig.height=5}
+error_components <- data.frame(
+  Source = c("Coverage", "Sampling", "Nonresponse", "Measurement", "Processing"),
+  Error_Size = c(3, 2, 5, 4, 1),
+  Can_Control = c("Partially", "No", "Partially", "Yes", "Yes"),
+  Cost_to_Fix = c("High", "N/A", "Medium", "Medium", "Low")
+)
+
+ggplot(error_components, aes(x = reorder(Source, Error_Size), y = Error_Size)) +
+  geom_segment(aes(xend = Source, y = 0, yend = Error_Size), size = 2, color = "gray") +
+  geom_point(aes(color = Can_Control), size = 8) +
+  scale_color_manual(values = c("Yes" = sadc_colors[2], 
+                                "Partially" = sadc_colors[4], 
+                                "No" = sadc_colors[6])) +
+  coord_flip() +
+  labs(title = "Components of Total Survey Error",
+       subtitle = "Typical contribution to total error (%)",
+       x = "", y = "Error Contribution (%)",
+       color = "Can We Control It?") +
+  theme(legend.position = "top")
+```
+
+**Key Insight**: Sampling error is often the smallest error!
+
+---
+
+# Breaking Down Each Error Type
+
+## 1. Coverage Error - Who's Missing?
+
+### What It Means:
+People left out of your sampling frame
+
+### Common Examples in SADC:
+- 🏘️ New informal settlements not on maps
+- 🏗️ Recently built apartments
+- 🚶 Nomadic populations
+- 🏃 Homeless individuals
+
+### Impact Example:
+If 10% of population is missing and they're all poor, poverty estimate could be off by 5-8 percentage points!
+
+### How to Fix:
+- Update frames regularly
+- Use multiple sources
+- Field verification
+
+---
+
+# Breaking Down Each Error Type
+
+## 2. Sampling Error - Natural Variation
+
+### What It Means:
+Different samples give slightly different results
+
+### The Good News:
+- ✅ We can calculate it exactly!
+- ✅ It gets smaller with bigger samples
+- ✅ It's predictable
+
+### Formula (Simplified):
+**Error = ± 1.96 × √(p×(1-p)/n)**
+
+Where:
+- p = proportion (like unemployment rate)
+- n = sample size
+
+### Example:
+For 30% unemployment, n=1000:
+Error = ± 1.96 × √(0.3×0.7/1000) = ± 2.8%
+
+---
+
+# Breaking Down Each Error Type
+
+## 3. Nonresponse Error - Who Didn't Answer?
+
+### The Growing Problem:
+
+```{r nonresponse-trend, echo=FALSE, fig.height=4}
+year_data <- data.frame(
+  Year = 2015:2025,
+  Urban_Response = c(82, 80, 78, 75, 73, 70, 68, 65, 63, 60, 58),
+  Rural_Response = c(90, 89, 88, 87, 85, 84, 82, 80, 78, 76, 74)
+)
+
+year_long <- year_data %>%
+  pivot_longer(cols = -Year, names_to = "Area", values_to = "Rate")
+
+ggplot(year_long, aes(x = Year, y = Rate, color = Area)) +
+  geom_line(size = 2) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c(sadc_colors[6], sadc_colors[2]),
+                     labels = c("Rural Areas", "Urban Areas")) +
+  labs(title = "Declining Response Rates: A Global Crisis",
+       subtitle = "Percentage of households completing interviews",
+       y = "Response Rate (%)", color = "") +
+  theme(legend.position = "top")
+```
+
+### Why It Matters:
+If rich people don't respond, we underestimate inequality!
+
+---
+
+# Breaking Down Each Error Type
+
+## 4. Measurement Error - Wrong Answers
+
+### Common Causes:
+
+#### 🤔 **Recall Issues**
+"How much did you spend on food last month?"
+- People forget small purchases
+- Round numbers ("about 100")
+
+#### 😊 **Social Desirability**
+"How often do you smoke?"
+- People underreport bad behaviors
+- Overreport good behaviors
+
+#### 😕 **Misunderstanding**
+"Are you in the labour force?"
+- Technical terms confuse
+- Different cultural interpretations
+
+### Real Impact:
+Income often underreported by 10-30%!
+
+---
+
+# Breaking Down Each Error Type
+
+## 5. Processing Error - Data Handling Mistakes
+
+### Where Things Go Wrong:
+
+```{r processing-errors, echo=FALSE, fig.height=4}
+process_stages <- data.frame(
+  Stage = c("Collection", "Entry", "Coding", "Editing", "Analysis"),
+  Error_Rate = c(2, 5, 3, 1, 2),
+  order = 1:5
+)
+
+ggplot(process_stages, aes(x = reorder(Stage, order), y = Error_Rate)) +
+  geom_col(fill = sadc_colors[4], width = 0.6) +
+  geom_text(aes(label = paste0(Error_Rate, "%")), vjust = -0.5, size = 5) +
+  labs(title = "Where Processing Errors Occur",
+       subtitle = "Typical error rates at each stage",
+       x = "Processing Stage", y = "Error Rate (%)") +
+  coord_cartesian(ylim = c(0, 6))
+```
+
+### Prevention:
+- Double data entry
+- Consistency checks
+- Automated validation
+
+---
+
+# Let's Practice Identifying Errors!
+
+## Interactive Exercise: What Went Wrong?
+
+### Scenario 1:
+> "Our poverty survey showed 10% poverty rate, but NGOs claim it's 25%"
+
+**What type of error?** 
+<details>
+Coverage error - likely missing informal settlements
+</details>
+
+### Scenario 2:
+> "Two interviewers in same area got very different results"
+
+**What type of error?**
+<details>
+Measurement error - inconsistent interviewing
+</details>
+
+### Scenario 3:
+> "Only 40% of selected households participated"
+
+**What type of error?**
+<details>
+Nonresponse error - low participation
+</details>
+
+---
+
+# The Power of Probability Sampling
+
+## Why Random Selection is Magic ✨
+
+### Imagine Two Approaches:
+
+#### Approach A: "Convenient" Selection
+- Interview people at shopping mall
+- Easy to find
+- Cooperative
+- **Result**: Only represents mall shoppers!
+
+#### Approach B: Probability Selection
+- Random selection from list
+- Everyone has known chance
+- Some hard to reach
+- **Result**: Represents entire population!
+
+---
+
+# Probability vs Non-Probability
+
+## See the Difference!
+
+```{r prob-vs-nonprob, echo=FALSE, fig.height=5}
+set.seed(111)
+# Create biased vs unbiased distributions
+population_true <- rnorm(10000, mean = 50, sd = 15)
+convenience_sample <- rnorm(500, mean = 65, sd = 8)  # Biased upward
+probability_sample <- sample(population_true, 500)
+
+comparison_data <- data.frame(
+  Value = c(convenience_sample, probability_sample),
+  Type = rep(c("Convenience Sample", "Probability Sample"), each = 500)
+)
+
+ggplot(comparison_data, aes(x = Value, fill = Type)) +
+  geom_density(alpha = 0.6) +
+  geom_vline(xintercept = 50, linetype = "dashed", size = 1.5) +
+  scale_fill_manual(values = c(sadc_colors[6], sadc_colors[2])) +
+  labs(title = "Convenience vs Probability Sampling",
+       subtitle = "True population mean = 50 (dashed line)",
+       x = "Measured Value", y = "Density") +
+  theme(legend.position = "top") +
+  annotate("text", x = 65, y = 0.04, label = "Convenience:\nBiased!", 
+           color = sadc_colors[6], fontface = "bold", size = 5) +
+  annotate("text", x = 50, y = 0.025, label = "Probability:\nAccurate!", 
+           color = sadc_colors[2], fontface = "bold", size = 5)
+```
+
+---
+
+# Key Principles of Probability Sampling
+
+## The 3 Golden Rules
+
+### 1. 🎲 **Known Probability**
+Everyone has a known (non-zero) chance of selection
+- Can calculate exact probability
+- Allows unbiased estimation
+
+### 2. 📊 **Random Selection**
+Use random mechanism (computer, random numbers)
+- No human judgment
+- Reproducible
+
+### 3. 📐 **Mathematical Foundation**
+Can calculate precision of estimates
+- Confidence intervals
+- Margins of error
+
+---
+
+class: center, middle, inverse
+
+# Session 2: The Mathematics of Sampling
+## Making Numbers Work for You
+### Hour 2: 9:00 - 10:00
+
+---
+
+# Don't Panic About Math!
+
+## We'll Make It Simple 
+
+### Here's All the Math You Really Need:
+
+1. **Addition and Division** ➕➗
+   - Calculate averages
+   - Sum up totals
+
+2. **Square Root** √
+   - For standard errors
+   - R does this for you!
+
+3. **Basic Probability** 🎲
+   - What are the chances?
+   - Simple fractions
+
+### That's it! Everything else, the computer handles!
+
+---
+
+# The Building Blocks
+
+## Population Parameters vs Sample Statistics
+
+### Population (What We Want to Know):
+- **Total**: Y = sum of all values
+- **Mean**: μ = average of all values  
+- **Proportion**: P = percentage with characteristic
+
+### Sample (What We Calculate):
+- **Total estimate**: Ŷ = scaled up sample sum
+- **Mean estimate**: ȳ = sample average
+- **Proportion estimate**: p̂ = sample percentage
+
+### The Magic Connection:
+**Sample statistics → Population parameters**
+
+---
+
+# Simple Random Sampling (SRS)
+
+## The Foundation of All Sampling
+
+### What Is It?
+Like lottery - everyone has equal chance
+
+### The Setup:
+- Population size: **N** (big number)
+- Sample size: **n** (smaller number)
+- Selection probability: **n/N** (same for everyone)
+
+### Visual Example:
+```{r srs-visual, echo=FALSE, fig.height=4.5}
+# Create SRS visualization
+N_pop <- 100
+n_sample <- 10
+set.seed(123)
+
+srs_data <- data.frame(
+  id = 1:N_pop,
+  x = rep(1:10, each = 10),
+  y = rep(1:10, 10),
+  selected = sample(c(rep(TRUE, n_sample), rep(FALSE, N_pop - n_sample)))
+)
+
+ggplot(srs_data, aes(x, y, fill = selected)) +
+  geom_tile(color = "white", size = 1) +
+  scale_fill_manual(values = c("FALSE" = "lightgray", "TRUE" = sadc_colors[2]),
+                    labels = c("Not Selected", "Selected")) +
+  labs(title = "Simple Random Sampling: Each Unit Has Equal Chance",
+       subtitle = paste("Selecting", n_sample, "from", N_pop, "units"),
+       fill = "") +
+  theme_minimal() +
+  theme(legend.position = "top",
+        axis.text = element_blank(),
+        axis.title = element_blank())
+```
+
+---
+
+# How SRS Works - Step by Step
+
+## Like Drawing Names from a Hat!
+
+### Step 1: List Everyone
+Create your sampling frame (complete list)
+
+### Step 2: Assign Numbers
+Give each unit a unique number (1 to N)
+
+### Step 3: Generate Random Numbers
+Use computer or random number table
+
+### Step 4: Select Your Sample
+Match random numbers to your list
+
+### Let's Try It!
+```{r srs-demo, echo=TRUE}
+# Population of 1000 households
+N <- 1000
+# Want sample of 50
+n <- 50
+# Generate random selection
+selected_ids <- sample(1:N, size = n, replace = FALSE)
+head(selected_ids, 10)  # First 10 selected
+```
+
+---
+
+# The Math Behind SRS
+
+## Simple Formulas That Work
+
+### To Estimate a Total:
+If sample average = 500 dollars
+Population size = 10,000 households
+
+**Population total = 10,000 × 500 = 5 million dollars**
+
+### To Estimate a Proportion:
+If 30 out of 100 sampled are unemployed:
+
+**Unemployment rate = 30/100 = 30%**
+
+### The Standard Error (Precision):
+**SE = √[(1-f) × s²/n]**
+
+Where:
+- f = n/N (sampling fraction)
+- s² = sample variance
+- n = sample size
+
+---
+
+# Understanding Standard Error
+
+## What Does It Really Mean?
+
+```{r se-explanation, echo=FALSE, fig.height=5}
+# Visualize standard error concept
+true_mean <- 50
+se_values <- c(1, 2, 5, 10)
+x_range <- seq(20, 80, 0.1)
+
+plot(NULL, xlim = c(20, 80), ylim = c(0, 0.4),
+     xlab = "Estimate Value", ylab = "Probability",
+     main = "Standard Error: How Precise Is Your Estimate?")
+
+colors <- sadc_colors[c(2, 3, 5, 6)]
+for(i in 1:4) {
+  curve(dnorm(x, true_mean, se_values[i]), add = TRUE, 
+        col = colors[i], lwd = 3)
+}
+
+abline(v = true_mean, lty = 2, lwd = 2)
+legend("topright", 
+       legend = paste("SE =", se_values),
+       col = colors, lwd = 3)
+text(true_mean, 0.38, "True Value", pos = 4, font = 2)
+```
+
+**Smaller SE = More Precise = Better!**
+
+---
+
+# The Central Limit Theorem
+
+## Why Sampling Works (The Magic!)
+
+### The Amazing Discovery:
+No matter what your population looks like, sample means follow a normal distribution!
+
+```{r clt-demo, echo=FALSE, fig.height=5}
+# Demonstrate CLT with different populations
+set.seed(789)
+par(mfrow = c(2, 3))
+
+# Uniform population
+pop_uniform <- runif(10000, 0, 100)
+hist(pop_uniform, main = "Uniform Population", col = sadc_colors[3], xlab = "")
+
+# Sample means from uniform
+means_uniform <- replicate(1000, mean(sample(pop_uniform, 30)))
+hist(means_uniform, main = "Sample Means (n=30)", col = sadc_colors[2], xlab = "")
+
+# QQ plot
+qqnorm(means_uniform, main = "Normal?")
+qqline(means_uniform, col = "red", lwd = 2)
+
+# Skewed population  
+pop_skewed <- rexp(10000, 0.05)
+hist(pop_skewed, main = "Skewed Population", col = sadc_colors[3], xlab = "")
+
+# Sample means from skewed
+means_skewed <- replicate(1000, mean(sample(pop_skewed, 30)))
+hist(means_skewed, main = "Sample Means (n=30)", col = sadc_colors[2], xlab = "")
+
+# QQ plot
+qqnorm(means_skewed, main = "Normal?")
+qqline(means_skewed, col = "red", lwd = 2)
+
+par(mfrow = c(1, 1))
+```
+
+---
+
+# Confidence Intervals
+
+## How Sure Are We?
+
+### What 95% Confidence Really Means:
+
+If we repeated our survey 100 times:
+- 95 times: interval contains true value ✅
+- 5 times: we'd miss ❌
+
+### The Formula:
+**Estimate ± 1.96 × Standard Error**
+
+### Example:
+- Unemployment estimate: 25%
+- Standard error: 1.5%
+- 95% CI: 25% ± (1.96 × 1.5%) = **22.1% to 27.9%**
+
+We're 95% confident true unemployment is between 22.1% and 27.9%
+
+---
+
+# Interactive: Build Your Own CI
+
+## Let's Calculate Together!
+
+```{r ci-interactive, echo=TRUE}
+# Survey results
+sample_size <- 500
+unemployed_count <- 125
+employed_count <- 375
+
+# Calculate proportion
+p_unemployed <- unemployed_count / sample_size
+cat("Unemployment rate:", p_unemployed * 100, "%\n")
+
+# Calculate standard error
+se <- sqrt(p_unemployed * (1 - p_unemployed) / sample_size)
+cat("Standard error:", round(se * 100, 2), "%\n")
+
+# 95% Confidence interval
+margin_error <- 1.96 * se
+lower_ci <- p_unemployed - margin_error
+upper_ci <- p_unemployed + margin_error
+
+cat("95% CI: [", round(lower_ci * 100, 1), "% - ", 
+    round(upper_ci * 100, 1), "%]\n")
+```
+
+---
+
+# Sample Size: How Many Do We Need?
+
+## The Million Dollar Question!
+
+### What Affects Sample Size?
+
+```{r sample-size-factors, echo=FALSE, fig.height=5}
+# Show how different factors affect sample size
+conf_levels <- c(0.90, 0.95, 0.99)
+margins <- seq(0.01, 0.05, 0.005)
+
+calc_n <- function(conf, margin, p = 0.5) {
+  z <- qnorm((1 + conf) / 2)
+  n <- (z^2 * p * (1-p)) / margin^2
+  return(n)
+}
+
+ss_data <- expand.grid(
+  Confidence = conf_levels,
+  Margin = margins
+) %>%
+  mutate(SampleSize = mapply(calc_n, Confidence, Margin))
+
+ggplot(ss_data, aes(x = Margin * 100, y = SampleSize, color = factor(Confidence))) +
+  geom_line(size = 2) +
+  geom_point(size = 3) +
+  scale_y_log10(labels = scales::comma) +
+  scale_color_manual(values = sadc_colors[c(2, 4, 6)],
+                     labels = c("90% Confidence", "95% Confidence", "99% Confidence")) +
+  labs(title = "Sample Size Requirements",
+       subtitle = "How precision and confidence affect sample size",
+       x = "Margin of Error (%)", 
+       y = "Required Sample Size (log scale)",
+       color = "") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Sample Size Formula Explained
+
+## Breaking It Down Simply
+
+### The Formula:
+**n = (Z² × p × (1-p)) / E²**
+
+### Where:
+- **n** = sample size needed
+- **Z** = confidence level (1.96 for 95%)
+- **p** = expected proportion (use 0.5 if unknown)
+- **E** = margin of error (like 0.03 for ±3%)
+
+### Example Calculation:
+For 95% confidence, ±3% margin, expecting 25% unemployment:
+
+n = (1.96² × 0.25 × 0.75) / 0.03²
+n = (3.84 × 0.1875) / 0.0009
+n = 800 households needed
+
+---
+
+# Let's Use R to Calculate!
+
+## Sample Size Calculator
+
+```{r sample-size-calc-demo, echo=TRUE}
+# Function to calculate sample size
+calculate_sample_size <- function(proportion = 0.5, 
+                                 margin_error = 0.03,
+                                 confidence = 0.95,
+                                 population = Inf) {
+  z <- qnorm((1 + confidence) / 2)
+  
+  # Basic formula
+  n0 <- (z^2 * proportion * (1 - proportion)) / margin_error^2
+  
+  # Adjust for finite population if needed
+  if(population != Inf) {
+    n <- n0 / (1 + (n0 - 1) / population)
+  } else {
+    n <- n0
+  }
+  
+  return(ceiling(n))
+}
+
+# Example: Different scenarios
+cat("Unemployment (25%, ±3%):", 
+    calculate_sample_size(0.25, 0.03), "\n")
+cat("Poverty (35%, ±2%):", 
+    calculate_sample_size(0.35, 0.02), "\n")
+cat("Rare event (5%, ±1%):", 
+    calculate_sample_size(0.05, 0.01), "\n")
+```
+
+---
+
+# The Finite Population Correction
+
+## When Your Population Is Small
+
+### The Issue:
+If sampling from small population, standard formulas overestimate error
+
+### The Solution: FPC
+**FPC = √[(N-n)/(N-1)]**
+
+### When It Matters:
+
+```{r fpc-demo, echo=FALSE, fig.height=4.5}
+# Show FPC effect
+N_values <- c(100, 500, 1000, 5000, 10000, Inf)
+n <- 100
+
+fpc_effect <- data.frame(
+  Population = N_values,
+  FPC = sqrt((N_values - n) / (N_values - 1)),
+  Label = c("100", "500", "1000", "5000", "10000", "Infinite")
+)
+
+fpc_effect <- fpc_effect[fpc_effect$Population != Inf, ]
+
+ggplot(fpc_effect, aes(x = Label, y = FPC)) +
+  geom_col(fill = sadc_colors[3], width = 0.6) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  geom_text(aes(label = round(FPC, 3)), vjust = -0.5, size = 4) +
+  labs(title = "Finite Population Correction Factor",
+       subtitle = "For sample size n = 100",
+       x = "Population Size", y = "Correction Factor") +
+  ylim(0, 1.1)
+```
+
+**Rule of Thumb**: Ignore FPC if sampling < 5% of population
+
+---
+
+# Stratified Sampling Preview
+
+## Tomorrow's Topic: Even Better Than SRS!
+
+### The Idea:
+Divide population into groups, sample from each
+
+```{r stratified-preview, echo=FALSE, fig.height=4.5}
+# Preview stratified sampling
+strat_data <- data.frame(
+  x = c(runif(30, 0, 3), runif(30, 3.5, 6.5), runif(30, 7, 10)),
+  y = c(rnorm(30, 2, 0.5), rnorm(30, 5, 0.5), rnorm(30, 8, 0.5)),
+  stratum = rep(c("Rural", "Urban", "Peri-urban"), each = 30),
+  selected = c(sample(c(rep(TRUE, 5), rep(FALSE, 25))),
+               sample(c(rep(TRUE, 5), rep(FALSE, 25))),
+               sample(c(rep(TRUE, 5), rep(FALSE, 25))))
+)
+
+ggplot(strat_data, aes(x, y, color = stratum, shape = selected)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_shape_manual(values = c(1, 16),
+                     labels = c("Not Selected", "Selected")) +
+  scale_color_manual(values = sadc_colors[c(2, 4, 6)]) +
+  labs(title = "Stratified Sampling: Sample from Each Group",
+       subtitle = "Ensures representation from all strata",
+       color = "Stratum", shape = "") +
+  theme(legend.position = "top")
+```
+
+**Why It's Better**: Guarantees representation from each group!
+
+---
+
+class: center, middle, inverse
+
+# Session 3: Setting Up R for Survey Analysis
+## Your Statistical Toolkit
+### Hour 3: 10:00 - 11:00
+
+---
+
+# Why R for Survey Analysis?
+
+## The Perfect Tool for Our Work
+
+### ✅ **FREE**
+- No license fees
+- Use on any computer
+- Share with colleagues
+
+### 📊 **POWERFUL**
+- Handles complex designs
+- All statistical methods
+- Beautiful visualizations
+
+### 🌍 **COMMUNITY**
+- Thousands of users
+- Helpful forums
+- Regular updates
+
+### 📚 **REPRODUCIBLE**
+- Document your work
+- Share exact methods
+- Ensure transparency
+
+---
+
+# Getting Started with R
+
+## If You're New, Don't Worry!
+
+### Think of R Like:
+- 📱 **Calculator**: Type math, get answers
+- 📝 **Notebook**: Save your work
+- 🎨 **Canvas**: Create graphics
+- 🤖 **Assistant**: Automates repetitive tasks
+
+### Today We'll:
+1. Install what we need
+2. Learn basic commands
+3. Run survey analysis
+4. Create reports
+
+---
+
+# Essential Packages Installation
+
+## Your Survey Analysis Toolkit
+
+```{r packages-install-demo, eval=FALSE, echo=TRUE}
+# Core packages - MUST HAVE
+install.packages("survey")     # Main survey analysis
+install.packages("sampling")   # Sample selection
+install.packages("tidyverse")  # Data manipulation
+
+# Helpful additions
+install.packages("haven")      # Read SPSS/Stata files
+install.packages("readxl")     # Read Excel files
+install.packages("srvyr")      # Modern survey syntax
+
+# Run this to check installation
+library(survey)
+packageVersion("survey")  # Should be 4.0 or higher
+```
+
+### 💡 **Tip**: Install packages once, load them each session
+
+---
+
+# Understanding the Survey Package
+
+## The Heart of Our Analysis
+
+### What It Does:
+- ✅ Handles complex survey designs
+- ✅ Calculates correct standard errors
+- ✅ Accounts for weights
+- ✅ Does subpopulation analysis
+
+### Basic Workflow:
+1. **Import** your data
+2. **Define** survey design
+3. **Analyze** with survey functions
+4. **Report** results
+
+---
+
+# Your First Survey Analysis!
+
+## Let's Do This Together
+
+```{r first-analysis, echo=TRUE}
+# Step 1: Create sample data
+my_data <- data.frame(
+  household_id = 1:100,
+  province = rep(c("North", "South", "East", "West"), each = 25),
+  weight = runif(100, 0.8, 1.5),
+  income = rlnorm(100, log(50000), 0.5),
+  employed = sample(0:1, 100, replace = TRUE, prob = c(0.3, 0.7))
+)
+
+# Step 2: Define survey design
+my_design <- svydesign(
+  ids = ~1,           # No clustering (simple random sample)
+  weights = ~weight,  # Survey weights
+  data = my_data
+)
+
+# Step 3: Calculate statistics
+svymean(~income, my_design)  # Average income
+```
+
+---
+
+# Understanding Survey Design Objects
+
+## The Foundation of Everything
+
+```{r design-explained, echo=TRUE}
+# Let's examine our design object
+summary(my_design)
+
+# What's inside?
+names(my_design)
+
+# How many observations?
+nrow(my_design)
+
+# Check the weights
+summary(weights(my_design))
+```
+
+### Key Points:
+- Design object stores all survey information
+- Use it for ALL analyses
+- Never analyze raw data directly!
+
+---
+
+# Common Analysis Functions
+
+## Your Daily Tools
+
+```{r common-functions, echo=TRUE}
+# Population total
+svytotal(~employed, my_design)
+
+# Proportion/percentage
+svymean(~employed, my_design)  # As proportion
+svymean(~employed, my_design) * 100  # As percentage
+
+# By subgroups
+svyby(~income, ~province, my_design, svymean)
+
+# Confidence intervals
+confint(svymean(~income, my_design))
+```
+
+---
+
+# Working with Real Data Files
+
+## Import from Different Sources
+
+```{r import-demo, eval=FALSE, echo=TRUE}
+# From CSV
+data_csv <- read.csv("household_survey.csv")
+
+# From Excel
+library(readxl)
+data_excel <- read_excel("survey_data.xlsx", sheet = "Data")
+
+# From SPSS
+library(haven)
+data_spss <- read_sav("survey_results.sav")
+
+# From Stata
+data_stata <- read_dta("labour_force.dta")
+
+# Check structure
+str(data_csv)  # See variable types
+head(data_csv) # First few rows
+names(data_csv) # Variable names
+```
+
+---
+
+# Data Cleaning Basics
+
+## Prepare Your Data for Analysis
+
+```{r cleaning-demo, echo=TRUE}
+# Common cleaning tasks
+library(dplyr)
+
+# Remove missing values
+clean_data <- my_data %>%
+  filter(!is.na(income))
+
+# Create new variables
+clean_data <- clean_data %>%
+  mutate(
+    income_category = case_when(
+      income < 30000 ~ "Low",
+      income < 70000 ~ "Middle",
+      TRUE ~ "High"
+    ),
+    employed_text = ifelse(employed == 1, "Yes", "No")
+  )
+
+# Check results
+table(clean_data$income_category)
+```
+
+---
+
+# Handling Missing Data
+
+## A Reality in Every Survey
+
+```{r missing-data, echo=TRUE}
+# Add some missing data to demonstrate
+my_data$income[sample(1:100, 10)] <- NA
+
+# Check missingness
+sum(is.na(my_data$income))
+mean(is.na(my_data$income)) * 100  # Percentage missing
+
+# Survey package handles missing automatically
+design_with_missing <- svydesign(~1, weights = ~weight, data = my_data)
+
+# Analysis excludes missing
+svymean(~income, design_with_missing, na.rm = TRUE)
+```
+
+### Options for Missing Data:
+- Complete case analysis (default)
+- Imputation (advanced)
+- Weighting adjustment
+
+---
+
+# Creating Survey Weights
+
+## From Probability to Weights
+
+```{r weights-creation, echo=TRUE}
+# Example: Stratified sample with different rates
+strata_pop <- c(North = 50000, South = 30000, East = 40000, West = 35000)
+strata_sample <- c(North = 25, South = 25, East = 25, West = 25)
+
+# Calculate base weights
+base_weights <- strata_pop[my_data$province] / 
+                strata_sample[my_data$province]
+
+# Add to data
+my_data$base_weight <- base_weights
+
+# Check distribution
+summary(my_data$base_weight)
+```
+
+---
+
+# Visualization in R
+
+## Making Your Results Clear
+
+```{r viz-demo, echo=TRUE, fig.height=4}
+# Ensure my_design exists first
+if(!exists("my_design")) {
+  # Create sample data
+  my_data <- data.frame(
+    household_id = 1:100,
+    province = rep(c("North", "South", "East", "West"), each = 25),
+    weight = runif(100, 0.8, 1.5),
+    income = rlnorm(100, log(50000), 0.5),
+    employed = sample(0:1, 100, replace = TRUE, prob = c(0.3, 0.7))
+  )
+  
+  # Define survey design
+  my_design <- svydesign(
+    ids = ~1,           # No clustering
+    weights = ~weight,  # Survey weights
+    data = my_data
+  )
+}
+
+# Basic bar chart of proportions
+employment_stats <- svymean(~employed, my_design)
+
+# Get the proportion employed (mean of 0/1 variable)
+prop_employed <- as.numeric(coef(employment_stats))
+prop_unemployed <- 1 - prop_employed
+
+# Create bar chart
+barplot(c(prop_unemployed, prop_employed), 
+        names.arg = c("Unemployed", "Employed"),
+        col = sadc_colors[c(6, 2)],
+        main = "Employment Status",
+        ylab = "Proportion",
+        ylim = c(0, 1))
+```
+
+---
+
+# Better Visualizations with ggplot2
+
+## Professional Quality Graphics
+
+```{r ggplot-demo, echo=TRUE, fig.height=4}
+# Prepare data for ggplot
+province_means <- svyby(~income, ~province, my_design, svymean)
+province_means$ci_lower <- confint(province_means)[,1]
+province_means$ci_upper <- confint(province_means)[,2]
+
+# Create plot
+ggplot(province_means, aes(x = province, y = income)) +
+  geom_col(fill = sadc_colors[3]) +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.2) +
+  labs(title = "Average Income by Province",
+       subtitle = "With 95% confidence intervals",
+       y = "Income ($)")
+```
+
+---
+
+# Creating Reproducible Reports
+
+## Document Everything!
+
+```{r report-structure, eval=FALSE, echo=TRUE}
+# Structure your R script with sections
+
+# ===================================
+# HOUSEHOLD SURVEY ANALYSIS
+# Author: Your Name
+# Date: November 2025
+# ===================================
+
+# 1. SETUP ------------------------
+library(survey)
+library(tidyverse)
+
+# 2. DATA IMPORT ------------------
+data <- read.csv("survey.csv")
+
+# 3. SURVEY DESIGN ----------------
+design <- svydesign(...)
+
+# 4. ANALYSIS ---------------------
+results <- svymean(...)
+
+# 5. EXPORT RESULTS ---------------
+write.csv(results, "output/results.csv")
+```
+
+---
+
+# Exercise: Set Up Your Environment
+
+## Let's Practice Together!
+
+### Task 1: Install and Load Packages
+```{r exercise-setup, eval=FALSE, echo=TRUE}
+# Your turn! Run these commands:
+install.packages(c("survey", "tidyverse"))
+library(survey)
+library(tidyverse)
+```
+
+### Task 2: Create Practice Data
+```{r exercise-data, eval=FALSE, echo=TRUE}
+# Create your own survey data
+your_data <- data.frame(
+  id = 1:50,
+  weight = runif(50, 1, 3),
+  age = sample(18:65, 50, replace = TRUE),
+  employed = sample(c("Yes", "No"), 50, replace = TRUE)
+)
+```
+
+### Task 3: Analyze!
+Create a survey design and calculate employment rate
+
+---
+
+class: center, middle, inverse
+
+# Session 4: Real-World Applications
+## SADC Survey Examples
+### Hour 4: 11:00 - 12:00
+
+---
+
+# Real Surveys in SADC Region
+
+## What We Actually Do
+
+### Major Survey Programs:
+
+```{r sadc-survey-table, echo=FALSE}
+survey_table <- data.frame(
+  Survey = c("DHS", "Labour Force", "Household Budget", "Agriculture", "MICS"),
+  Frequency = c("5 years", "Quarterly", "3 years", "Annual", "5 years"),
+  Sample_Size = c("8,000-12,000", "20,000-30,000", "5,000-10,000", 
+                  "10,000-15,000", "10,000-15,000"),
+  Key_Indicators = c("Health, Fertility", "Employment, Wages", 
+                     "Poverty, Consumption", "Production, Food Security",
+                     "Child Well-being")
+)
+
+kable(survey_table, format = "html", 
+      caption = "Major Household Surveys in SADC") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+---
+
+# Case Study 1: Mozambique DHS
+
+## Demographic and Health Survey Design
+
+### The Challenge:
+- Population: 32 million
+- Provinces: 11 (very different sizes)
+- Languages: 40+
+- Infrastructure: Limited roads in north
+
+### The Solution:
+```{r mozambique-dhs, echo=FALSE, fig.height=4}
+moz_data <- data.frame(
+  Province = c("Maputo City", "Maputo", "Gaza", "Inhambane", "Sofala", 
+               "Manica", "Tete", "Zambezia", "Nampula", "Cabo Delgado", "Niassa"),
+  Population = c(1.1, 1.9, 1.4, 1.5, 2.2, 2.4, 2.7, 5.1, 6.1, 2.3, 1.8),
+  Sample = c(800, 900, 800, 800, 1000, 1000, 1100, 1500, 1600, 1000, 900)
+)
+
+ggplot(moz_data, aes(x = Population, y = Sample)) +
+  geom_point(size = 4, color = sadc_colors[2]) +
+  geom_text(aes(label = Province), vjust = -1, size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = sadc_colors[6]) +
+  labs(title = "Mozambique DHS Sample Allocation",
+       x = "Population (millions)", y = "Sample Size (households)")
+```
+
+---
+
+# Case Study 2: South Africa LFS
+
+## Quarterly Labour Force Survey
+
+### Design Features:
+- **Rotation**: 4 quarters participation
+- **Sample**: 30,000 dwellings quarterly
+- **Stratification**: Province × Metro/Non-metro
+- **Clustering**: Census enumeration areas
+
+### Key Results Produced:
+```{r sa-lfs-results, echo=FALSE, fig.height=4}
+quarters <- data.frame(
+  Quarter = c("Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024", "Q1-2025"),
+  Unemployment = c(32.1, 31.9, 32.6, 33.0, 32.8),
+  SE = c(0.5, 0.5, 0.6, 0.5, 0.5)
+)
+
+ggplot(quarters, aes(x = Quarter, y = Unemployment, group = 1)) +
+  geom_line(size = 2, color = sadc_colors[2]) +
+  geom_point(size = 4, color = sadc_colors[2]) +
+  geom_errorbar(aes(ymin = Unemployment - 1.96*SE, 
+                    ymax = Unemployment + 1.96*SE), width = 0.1) +
+  labs(title = "South Africa Unemployment Rate",
+       subtitle = "Quarterly estimates with 95% CI",
+       y = "Unemployment Rate (%)")
+```
+
+---
+
+# Common SADC Challenges
+
+## Problems We All Face
+
+### 1. 🗺️ **Outdated Sampling Frames**
+
+```{r frame-age, echo=FALSE, fig.height=3.5}
+frame_data <- data.frame(
+  Country = c("Angola", "DRC", "Madagascar", "Malawi", "Mozambique", 
+              "Tanzania", "Zambia", "Zimbabwe"),
+  Years_Old = c(8, 12, 7, 6, 7, 10, 9, 10)
+)
+
+ggplot(frame_data, aes(x = reorder(Country, Years_Old), y = Years_Old)) +
+  geom_col(fill = sadc_colors[6], width = 0.6) +
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red", size = 1) +
+  coord_flip() +
+  labs(title = "Age of Census Frames (Years)",
+       subtitle = "Red line = recommended maximum (5 years)",
+       x = "", y = "Years Since Last Census")
+```
+
+**Impact**: Missing 15-25% of population!
+
+---
+
+# Challenge: Informal Settlements
+
+## A Growing Issue
+
+### The Problem:
+- No formal addresses
+- Rapid growth (5-10% annually)
+- No official maps
+- Safety concerns
+
+### Solutions That Work:
+
+```{r informal-solutions, echo=FALSE, fig.height=4}
+solutions <- data.frame(
+  Method = c("Satellite\nMapping", "Community\nLeaders", "GPS\nListing", 
+             "Adaptive\nSampling"),
+  Effectiveness = c(75, 85, 90, 70),
+  Cost = c(80, 30, 60, 40)
+)
+
+solutions_long <- solutions %>%
+  pivot_longer(cols = c(Effectiveness, Cost), names_to = "Measure", values_to = "Score")
+
+ggplot(solutions_long, aes(x = Method, y = Score, fill = Measure)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c(sadc_colors[6], sadc_colors[2])) +
+  labs(title = "Solutions for Informal Settlement Sampling",
+       y = "Score (0-100)", x = "") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Challenge: Mobile Populations
+
+## People Who Move
+
+### Who Are They?
+- Seasonal farm workers
+- Cross-border traders
+- Mining communities
+- Pastoral groups
+
+### The Impact:
+```{r mobile-impact, echo=FALSE, fig.height=4}
+mobile_data <- data.frame(
+  Issue = c("Undercoverage", "Double counting", "Nonresponse", "Bias"),
+  Impact = c(8, 3, 12, 6)
+)
+
+ggplot(mobile_data, aes(x = reorder(Issue, Impact), y = Impact)) +
+  geom_segment(aes(xend = Issue, y = 0, yend = Impact), 
+               size = 2, color = "gray50") +
+  geom_point(size = 6, color = sadc_colors[6]) +
+  coord_flip() +
+  labs(title = "Impact of Mobile Populations on Survey Quality",
+       subtitle = "Percentage point effect on estimates",
+       x = "", y = "Impact (%)")
+```
+
+---
+
+# Language and Cultural Issues
+
+## Making Surveys Work Locally
+
+### Translation Challenges:
+
+```{r language-issues, echo=FALSE}
+lang_table <- data.frame(
+  Concept = c("Unemployment", "Household Head", "Income", "Formal Sector"),
+  English = c("Without work", "Family leader", "Money earned", "Registered business"),
+  Local_Issue = c("'Not farming' vs 'Not working'", 
+                  "Gender assumptions vary",
+                  "Cash only or include goods?",
+                  "Unknown concept rurally")
+)
+
+kable(lang_table, format = "html",
+      caption = "Lost in Translation: Concept Challenges") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Best Practices:
+- Use local translators
+- Back-translate everything
+- Pilot test extensively
+- Train on local context
+
+---
+
+# Practical Design Decisions
+
+## Real Choices You'll Face
+
+### Decision Tree for Sample Design:
+
+```{r design-tree, echo=FALSE, fig.height=5}
+# Create decision tree visualization
+par(mar = c(1, 1, 2, 1))
+plot(0:10, 0:10, type = "n", axes = FALSE, xlab = "", ylab = "",
+     main = "Survey Design Decision Tree")
+
+# Start
+rect(4, 9, 6, 10, col = sadc_colors[2])
+text(5, 9.5, "Start", col = "white", font = 2)
+
+# Budget question
+rect(2, 7, 4, 8, col = sadc_colors[3])
+text(3, 7.5, "Budget\n< $100k?", cex = 0.8)
+arrows(5, 9, 3, 8, lwd = 2)
+
+rect(6, 7, 8, 8, col = sadc_colors[3])
+text(7, 7.5, "Budget\n> $100k?", cex = 0.8)
+arrows(5, 9, 7, 8, lwd = 2)
+
+# Sample type
+rect(0.5, 5, 2.5, 6, col = sadc_colors[4])
+text(1.5, 5.5, "Simple\nRandom", cex = 0.8)
+arrows(3, 7, 1.5, 6, lwd = 2)
+
+rect(6, 5, 8, 6, col = sadc_colors[4])
+text(7, 5.5, "Complex\nDesign", cex = 0.8)
+arrows(7, 7, 7, 6, lwd = 2)
+
+par(mar = c(5, 4, 4, 2))
+```
+
+---
+
+# R Implementation: Real Survey
+
+## Complete Working Example
+
+```{r real-survey-example, echo=TRUE}
+# Load real-style data
+set.seed(2025)
+n_households <- 1000
+
+survey_data <- data.frame(
+  hh_id = 1:n_households,
+  province = sample(c("Northern", "Southern", "Eastern", "Western"), 
+                   n_households, replace = TRUE),
+  urban = sample(c("Urban", "Rural"), n_households, 
+                replace = TRUE, prob = c(0.4, 0.6)),
+  hh_size = rpois(n_households, lambda = 4) + 1,
+  income = rlnorm(n_households, meanlog = 10, sdlog = 0.8),
+  employed_count = rbinom(n_households, size = 3, prob = 0.6)
+)
+
+# Add realistic weights
+survey_data$weight <- ifelse(survey_data$urban == "Urban", 
+                            runif(n_households, 15, 25),
+                            runif(n_households, 8, 12))
+
+# Create survey design
+real_design <- svydesign(
+  ids = ~1,
+  strata = ~interaction(province, urban),
+  weights = ~weight,
+  data = survey_data
+)
+
+# Analysis
+svymean(~income, real_design)
+```
+
+---
+
+# Quality Control in Practice
+
+## How to Ensure Good Data
+
+### Field Supervision Structure:
+
+```{r supervision-structure, echo=FALSE, fig.height=4.5}
+supervision <- data.frame(
+  Level = c("National\nCoordinator", "Regional\nSupervisor", 
+            "Field\nSupervisor", "Team\nLeader", "Interviewer"),
+  Number = c(1, 4, 16, 32, 128),
+  y_pos = c(5, 4, 3, 2, 1)
+)
+
+ggplot(supervision, aes(x = 0, y = y_pos)) +
+  geom_point(aes(size = Number), color = sadc_colors[3], alpha = 0.7) +
+  geom_text(aes(label = Level), hjust = -0.5, size = 4) +
+  geom_text(aes(label = paste("n =", Number)), hjust = 1.5, size = 3) +
+  scale_size_continuous(range = c(5, 30)) +
+  xlim(-1, 2) +
+  ylim(0, 6) +
+  theme_void() +
+  theme(legend.position = "none") +
+  labs(title = "Typical Field Organization Structure")
+```
+
+---
+
+# Data Quality Checks
+
+## Catching Problems Early
+
+```{r quality-checks-demo, echo=TRUE}
+# 1. Check for duplicates
+sum(duplicated(survey_data$hh_id))
+
+# 2. Check for outliers
+outlier_check <- survey_data %>%
+  mutate(z_score = abs((income - mean(income)) / sd(income))) %>%
+  filter(z_score > 3)
+nrow(outlier_check)  # Number of outliers
+
+# 3. Check logical consistency
+inconsistent <- survey_data %>%
+  filter(employed_count > hh_size)  # More employed than people!
+nrow(inconsistent)
+
+# 4. Check missing patterns
+missing_summary <- survey_data %>%
+  summarise(across(everything(), ~sum(is.na(.))))
+print(missing_summary)
+```
+
+---
+
+# Cost Considerations
+
+## Budget Reality Check
+
+```{r cost-breakdown, echo=FALSE, fig.height=5}
+cost_items <- data.frame(
+  Category = c("Planning", "Training", "Data Collection", 
+               "Supervision", "Data Entry", "Analysis", "Dissemination"),
+  Percentage = c(10, 8, 50, 12, 8, 7, 5),
+  Cost_1000 = c(10, 8, 50, 12, 8, 7, 5)
+)
+
+ggplot(cost_items, aes(x = "", y = Percentage, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = sadc_colors) +
+  labs(title = "Typical Survey Budget Breakdown",
+       subtitle = "Where your money goes") +
+  theme_void() +
+  theme(legend.position = "right")
+```
+
+### Cost-Saving Tips:
+- Use CAPI (Computer-Assisted)
+- Combine surveys
+- Share field costs
+- Use existing frames
+
+---
+
+class: center, middle, inverse
+
+# LUNCH BREAK
+## Enjoy Your Meal!
+### We Resume at 13:00
+#### Afternoon: Variance, Standards, and Practice
+
+---
+
+class: center, middle, inverse
+
+# Session 5: Variance Estimation
+## Getting the Precision Right
+### Hour 5: 13:00 - 14:00
+
+---
+
+# Welcome Back!
+
+## Afternoon Energy Check ⚡
+
+### Quick Warm-Up:
+Stand up and find a partner:
+1. Share one thing you learned this morning
+2. Share one question you still have
+3. Share what you had for lunch 😊
+
+**You have 2 minutes!**
+
+---
+
+# Why Variance Matters
+
+## It's Not Just About the Estimate!
+
+### Two Survey Results:
+**Survey A**: Unemployment = 25% ± 0.5%
+**Survey B**: Unemployment = 25% ± 5%
+
+### Which is more useful?
+
+```{r variance-importance, echo=FALSE, fig.height=4}
+x <- seq(15, 35, 0.1)
+y_narrow <- dnorm(x, 25, 0.5/1.96)
+y_wide <- dnorm(x, 25, 5/1.96)
+
+plot(x, y_narrow, type = "l", lwd = 3, col = sadc_colors[2],
+     xlab = "Unemployment Rate (%)", ylab = "Probability",
+     main = "Same Estimate, Different Precision")
+lines(x, y_wide, lwd = 3, col = sadc_colors[6])
+abline(v = 25, lty = 2)
+legend("topright", c("Survey A (Precise)", "Survey B (Imprecise)"),
+       col = c(sadc_colors[2], sadc_colors[6]), lwd = 3)
+```
+
+**Survey A is 10x more useful for policy!**
+
+---
+
+# Understanding Variance
+
+## What Creates Uncertainty?
+
+### Sources of Variance:
+
+```{r variance-sources, echo=FALSE, fig.height=4.5}
+var_sources <- data.frame(
+  Source = c("Natural\nVariation", "Sample\nSize", "Design\nEffect", 
+             "Population\nHeterogeneity"),
+  Contribution = c(30, 25, 20, 25),
+  Controllable = c("No", "Yes", "Partially", "No")
+)
+
+ggplot(var_sources, aes(x = Source, y = Contribution, fill = Controllable)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = c("No" = sadc_colors[6], 
+                               "Partially" = sadc_colors[4],
+                               "Yes" = sadc_colors[2])) +
+  labs(title = "What Contributes to Variance?",
+       y = "Contribution (%)", x = "") +
+  theme(legend.position = "top")
+```
+
+### Key Insight:
+We can only control some factors!
+
+---
+
+# Variance Estimation Methods
+
+## Three Main Approaches
+
+### 1. 📐 **Taylor Series Linearization**
+- Mathematical approximation
+- Fast computation
+- Default in most software
+
+### 2. 🔄 **Replication Methods**
+- Bootstrap
+- Jackknife  
+- BRR (Balanced Repeated Replication)
+
+### 3. 🎯 **Direct Calculation**
+- Simple designs only
+- Exact formulas
+- Teaching purposes
+
+---
+
+# Taylor Series Method
+
+## The Workhorse of Survey Analysis
+
+### How It Works:
+1. Takes non-linear statistics
+2. Approximates with linear function
+3. Calculates variance of linear approximation
+
+### In R:
+```{r taylor-demo, echo=TRUE}
+# Create example design
+data_ex <- data.frame(
+  id = 1:500,
+  stratum = rep(1:5, each = 100),
+  weight = runif(500, 1, 3),
+  income = rlnorm(500, 10, 0.5)
+)
+
+design_taylor <- svydesign(
+  ids = ~1,
+  strata = ~stratum,
+  weights = ~weight,
+  data = data_ex
+)
+
+# Automatic Taylor series
+svymean(~income, design_taylor)  # SE calculated via Taylor
+```
+
+---
+
+# Bootstrap Method
+
+## Learning from Repetition
+
+### The Concept:
+Take many samples from your sample!
+
+```{r bootstrap-concept, echo=FALSE, fig.height=4.5}
+set.seed(456)
+original <- rnorm(100, 50, 10)
+boot_means <- replicate(1000, mean(sample(original, replace = TRUE)))
+
+hist(boot_means, breaks = 30, col = sadc_colors[3],
+     main = "Bootstrap Distribution of Mean",
+     xlab = "Bootstrap Sample Means")
+abline(v = mean(original), col = "red", lwd = 3)
+abline(v = quantile(boot_means, c(0.025, 0.975)), col = "blue", lty = 2, lwd = 2)
+legend("topright", c("Original Mean", "95% CI"), 
+       col = c("red", "blue"), lty = c(1, 2), lwd = 2)
+```
+
+---
+
+# Bootstrap in Practice
+
+```{r bootstrap-practice, echo=TRUE, cache=TRUE}
+# Convert to bootstrap design
+boot_design <- as.svrepdesign(design_taylor, 
+                              type = "bootstrap", 
+                              replicates = 500)
+
+# Compare methods
+taylor_result <- svymean(~income, design_taylor)
+boot_result <- svymean(~income, boot_design)
+
+# Display comparison
+data.frame(
+  Method = c("Taylor Series", "Bootstrap"),
+  Estimate = c(coef(taylor_result), coef(boot_result)),
+  SE = c(SE(taylor_result), SE(boot_result)),
+  CV = c(cv(taylor_result), cv(boot_result)) * 100
+)
+```
+
+---
+
+# Jackknife Method
+
+## Leave-One-Out Approach
+
+### How It Works:
+
+```{r jackknife-visual, echo=FALSE, fig.height=4}
+# Visualize jackknife concept
+par(mfrow = c(2, 3))
+for(i in 1:6) {
+  plot(1:10, rep(1, 10), pch = 19, cex = 2,
+       col = ifelse(1:10 == i, "red", sadc_colors[2]),
+       ylim = c(0.5, 1.5), axes = FALSE,
+       main = paste("Replicate", i),
+       xlab = "", ylab = "")
+  if(i == 1) legend("bottom", c("Included", "Excluded"), 
+                    col = c(sadc_colors[2], "red"), pch = 19)
+}
+par(mfrow = c(1, 1))
+```
+
+Each replicate excludes different observations
+
+---
+
+# Jackknife Implementation
+
+```{r jackknife-implementation, echo=TRUE}
+# Create jackknife weights
+jk_design <- as.svrepdesign(design_taylor, type = "JKn")
+
+# Estimate with jackknife
+jk_result <- svymean(~income, jk_design)
+
+# Number of replicates
+ncol(weights(jk_design))  # One per PSU
+
+# Compare all three methods
+comparison <- data.frame(
+  Method = c("Taylor", "Bootstrap", "Jackknife"),
+  SE = c(SE(taylor_result), SE(boot_result), SE(jk_result))
+)
+print(comparison)
+```
+
+---
+
+# Design Effects (DEFF)
+
+## Price of Complex Designs
+
+### Definition:
+**DEFF = Variance(Complex) / Variance(SRS)**
+
+### Interpretation:
+- DEFF = 1: No efficiency loss
+- DEFF = 2: Need 2× sample size
+- DEFF = 4: Need 4× sample size
+
+```{r deff-visual, echo=FALSE, fig.height=4}
+deff_values <- data.frame(
+  Design = c("SRS", "Stratified", "Cluster", "Stratified\nCluster"),
+  DEFF = c(1.0, 0.8, 2.5, 2.0)
+)
+
+ggplot(deff_values, aes(x = Design, y = DEFF)) +
+  geom_col(aes(fill = DEFF < 1.5), width = 0.6) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red", size = 1) +
+  scale_fill_manual(values = c("TRUE" = sadc_colors[2], "FALSE" = sadc_colors[6]),
+                    labels = c("Efficient", "Inefficient")) +
+  labs(title = "Design Effects for Different Sampling Strategies",
+       y = "Design Effect (DEFF)", fill = "") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Calculating Design Effects
+
+```{r deff-calculation, echo=TRUE}
+# Method 1: Direct calculation
+complex_var <- SE(taylor_result)^2
+# Would need SRS design for comparison
+# srs_var <- SE(srs_result)^2
+# deff <- complex_var / srs_var
+
+# Method 2: Using svydesign
+deff(design_taylor)  # Automatic calculation
+
+# Method 3: Effective sample size
+n_actual <- nrow(design_taylor)
+n_effective <- n_actual / mean(deff(design_taylor))
+
+cat("Actual sample size:", n_actual, "\n")
+cat("Effective sample size:", round(n_effective), "\n")
+cat("Efficiency loss:", round((1 - n_effective/n_actual) * 100), "%\n")
+```
+
+---
+
+# Coefficient of Variation
+
+## Measuring Relative Precision
+
+### Definition:
+**CV = (Standard Error / Estimate) × 100%**
+
+### Quality Guidelines:
+
+```{r cv-guidelines, echo=FALSE}
+cv_table <- data.frame(
+  CV_Range = c("< 5%", "5-10%", "10-15%", "15-25%", "> 25%"),
+  Quality = c("Excellent", "Good", "Acceptable", "Use with caution", "Unreliable"),
+  Color = c(sadc_colors[2], sadc_colors[3], sadc_colors[4], 
+           sadc_colors[5], sadc_colors[6])
+)
+
+kable(cv_table[, 1:2], format = "html",
+      caption = "CV Quality Guidelines") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(1, background = sadc_colors[2], color = "white") %>%
+  row_spec(2, background = sadc_colors[3], color = "white") %>%
+  row_spec(3, background = sadc_colors[4], color = "white") %>%
+  row_spec(4, background = sadc_colors[5], color = "white") %>%
+  row_spec(5, background = sadc_colors[6], color = "white")
+```
+
+---
+
+# CV in Practice
+
+```{r cv-practice, echo=TRUE}
+# Calculate CV for different domains
+domain_stats <- svyby(~income, ~stratum, design_taylor, svymean)
+
+# Add CV
+domain_stats$cv <- cv(domain_stats) * 100
+
+# Quality assessment
+domain_stats$quality <- cut(domain_stats$cv,
+                           breaks = c(0, 5, 10, 15, 25, 100),
+                           labels = c("Excellent", "Good", "Acceptable",
+                                    "Caution", "Unreliable"))
+
+print(domain_stats[, c("stratum", "income", "cv", "quality")])
+```
+
+---
+
+# Variance for Subpopulations
+
+## Getting Domain Estimates Right
+
+### The Challenge:
+Smaller groups = Higher variance
+
+```{r subpop-variance, echo=FALSE, fig.height=4}
+subpop_data <- data.frame(
+  Group = c("National", "Urban", "Rural", "Province A", 
+           "District 1", "Village X"),
+  Sample_Size = c(5000, 2000, 3000, 500, 100, 20),
+  CV = c(2, 3, 2.5, 7, 15, 35)
+)
+
+ggplot(subpop_data, aes(x = Sample_Size, y = CV)) +
+  geom_point(size = 5, color = sadc_colors[3]) +
+  geom_text(aes(label = Group), vjust = -1.5, size = 3) +
+  scale_x_log10() +
+  geom_hline(yintercept = 15, linetype = "dashed", color = "red") +
+  labs(title = "Precision Deteriorates for Small Domains",
+       x = "Sample Size (log scale)", y = "CV (%)",
+       subtitle = "Red line = reliability threshold")
+```
+
+---
+
+# Improving Precision
+
+## Strategies That Work
+
+### 1. **Increase Sample Size**
+- Most direct approach
+- But expensive!
+
+### 2. **Better Stratification**
+- Reduce within-stratum variance
+- Costs nothing extra
+
+### 3. **Use Auxiliary Information**
+- Ratio/regression estimation
+- Post-stratification
+
+### 4. **Optimize Allocation**
+- Neyman allocation
+- Power allocation
+
+---
+
+# Practical Exercise: Variance
+
+## Calculate Your Own!
+
+```{r variance-exercise, echo=TRUE}
+# Create your data
+my_sample <- data.frame(
+  id = 1:200,
+  region = rep(c("North", "South"), each = 100),
+  weight = runif(200, 1, 4),
+  expenditure = rlnorm(200, log(1000), 0.6)
+)
+
+# Your tasks:
+# 1. Create survey design
+# 2. Calculate mean expenditure
+# 3. Calculate SE three ways (Taylor, Bootstrap, Jackknife)
+# 4. Calculate CV
+# 5. Assess quality
+
+# Start here:
+my_design <- svydesign(ids = ~1, strata = ~region, 
+                       weights = ~weight, data = my_sample)
+```
+
+---
+
+class: center, middle, inverse
+
+# Session 6: International Standards
+## Quality Frameworks That Guide Us
+### Hour 6: 14:00 - 15:00
+
+---
+
+# Why Standards Matter
+
+## Building Trust in Statistics
+
+### The Stakes Are High:
+
+```{r standards-impact, echo=FALSE, fig.height=4.5}
+trust_data <- data.frame(
+  Factor = c("Follow Standards", "Transparent Methods", "Quality Checks",
+            "Regular Updates", "User Engagement"),
+  Trust_Impact = c(90, 85, 80, 75, 70)
+)
+
+ggplot(trust_data, aes(x = reorder(Factor, Trust_Impact), y = Trust_Impact)) +
+  geom_col(fill = sadc_colors[2], width = 0.7) +
+  coord_flip() +
+  labs(title = "What Builds Trust in Official Statistics?",
+       subtitle = "Impact on public confidence (%)",
+       x = "", y = "Trust Impact Score") +
+  geom_text(aes(label = paste0(Trust_Impact, "%")), hjust = -0.2)
+```
+
+**Standards are the foundation of credibility!**
+
+---
+
+# The Global Framework
+
+## Who Sets Standards?
+
+```{r standards-orgs, echo=FALSE, fig.height=5}
+# Create network of organizations
+par(mar = c(1, 1, 2, 1))
+plot(0:10, 0:10, type = "n", axes = FALSE,
+     main = "International Statistical Standards Network",
+     xlab = "", ylab = "")
+
+# UN at center
+symbols(5, 5, circles = 1, inches = 0.5, bg = sadc_colors[1], add = TRUE)
+text(5, 5, "UN", col = "white", font = 2, cex = 1.5)
+
+# Surrounding organizations
+orgs <- list(
+  c(3, 7, "Eurostat"),
+  c(7, 7, "World Bank"),
+  c(3, 3, "ILO"),
+  c(7, 3, "IMF"),
+  c(2, 5, "OECD"),
+  c(8, 5, "WHO")
+)
+
+for(org in orgs) {
+  symbols(as.numeric(org[1]), as.numeric(org[2]), 
+         circles = 0.5, inches = 0.3, bg = sadc_colors[3], add = TRUE)
+  text(as.numeric(org[1]), as.numeric(org[2]), org[3], cex = 0.8)
+  arrows(5, 5, as.numeric(org[1]), as.numeric(org[2]), 
+        length = 0.1, col = "gray")
+}
+
+# SADC
+symbols(5, 1, circles = 0.5, inches = 0.4, bg = sadc_colors[6], add = TRUE)
+text(5, 1, "SADC", col = "white", font = 2)
+arrows(5, 5, 5, 1.5, length = 0.15, lwd = 2, col = sadc_colors[2])
+
+par(mar = c(5, 4, 4, 2))
+```
+
+---
+
+# UN Fundamental Principles
+
+## The 10 Commandments of Statistics
+
+### Principle 1: **Relevance & Impartiality**
+> "Official statistics that meet the test of practical utility are to be compiled and made available on an impartial basis"
+
+### What This Means for You:
+- Serve all users equally
+- No political interference
+- Publish even "bad news"
+- Transparent methodology
+
+### Real Example:
+Country X delayed unemployment figures before election ❌
+Country Y published on schedule regardless ✅
+
+---
+
+# UN Principles (cont'd)
+
+### Principle 2: **Professional Standards**
+> "To retain trust in official statistics, agencies need to decide according to strictly professional considerations"
+
+### Principle 3: **Accountability**
+> "To facilitate a correct interpretation of the data, statistical agencies are to present information according to scientific standards"
+
+### Principle 4: **Prevention of Misuse**
+> "Statistical agencies are entitled to comment on erroneous interpretation and misuse of statistics"
+
+---
+
+# Eurostat Quality Framework
+
+## The European Way
+
+### 15 Quality Principles in 3 Pillars:
+
+```{r eurostat-framework, echo=FALSE, fig.height=5}
+eurostat_data <- data.frame(
+  Pillar = rep(c("Institutional\nEnvironment", "Statistical\nProcesses", 
+                 "Statistical\nOutput"), c(6, 4, 5)),
+  Principle = c("Independence", "Mandate", "Resources", "Quality Commitment",
+               "Confidentiality", "Impartiality",
+               "Sound Methods", "Appropriate Procedures", "Respondent Burden", "Cost Effective",
+               "Relevance", "Accuracy", "Timeliness", "Comparability", "Accessibility"),
+  Score = c(85, 90, 70, 80, 95, 88,
+           82, 78, 72, 75,
+           86, 79, 68, 83, 77)
+)
+
+ggplot(eurostat_data, aes(x = Principle, y = Score, fill = Pillar)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = sadc_colors[c(2, 4, 6)]) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
+  labs(title = "Eurostat Quality Principles Assessment",
+       subtitle = "Example country scorecard",
+       y = "Score (0-100)", x = "", fill = "Quality Pillar") +
+  theme(legend.position = "top") +
+  geom_hline(yintercept = 75, linetype = "dashed", color = "red")
+```
+
+---
+
+# Quality Dimensions in Detail
+
+## The 6 Key Dimensions
+
+### 1. **Relevance** 📊
+Does the data meet user needs?
+
+### 2. **Accuracy** 🎯
+How close to the truth?
+
+### 3. **Timeliness** ⏰
+Available when needed?
+
+### 4. **Accessibility** 🔓
+Can users get and understand it?
+
+### 5. **Comparability** 🔄
+Consistent over time and space?
+
+### 6. **Coherence** 🔗
+Does it fit with other data?
+
+---
+
+# SADC Statistical Protocol
+
+## Our Regional Framework
+
+### Key Objectives:
+1. **Harmonization** - Common methods across members
+2. **Capacity Building** - Strengthen all NSOs
+3. **Data Sharing** - Regional database
+4. **Quality Assurance** - Peer reviews
+
+```{r sadc-compliance, echo=FALSE, fig.height=4}
+compliance_data <- data.frame(
+  Area = c("Methods", "Timeliness", "Coverage", "Quality", "Dissemination"),
+  Target = rep(100, 5),
+  Actual = c(75, 65, 80, 70, 85)
+)
+
+compliance_long <- compliance_data %>%
+  pivot_longer(cols = c(Target, Actual), names_to = "Type", values_to = "Score")
+
+
+ggplot(compliance_long, aes(x = Area, y = Score, fill = Type)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("Actual" = sadc_colors[3], "Target" = sadc_colors[1])) +
+  labs(title = "SADC Statistical Protocol Compliance",
+       subtitle = "Regional average performance",
+       y = "Compliance Score (%)", x = "") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Data Quality Assessment Framework
+
+## IMF's DQAF
+
+### Six Dimensions:
+
+```{r dqaf-spider, echo=FALSE, fig.height=5}
+# Create radar chart data
+library(fmsb)
+dqaf_scores <- data.frame(
+  row.names = c("max", "min", "actual"),
+  Prerequisites = c(100, 0, 75),
+  Integrity = c(100, 0, 85),
+  Methodology = c(100, 0, 70),
+  Accuracy = c(100, 0, 65),
+  Serviceability = c(100, 0, 80),
+  Accessibility = c(100, 0, 72)
+)
+
+# Create the radar chart
+radarchart(dqaf_scores, 
+           pcol = sadc_colors[2], pfcol = scales::alpha(sadc_colors[2], 0.3),
+           plwd = 2, plty = 1,
+           cglcol = "grey", cglty = 1, cglwd = 0.8,
+           axislabcol = "grey", 
+           vlcex = 0.8,
+           title = "DQAF Assessment Example")
+```
+
+---
+
+# Metadata Standards
+
+## Documentation Matters!
+
+### DDI (Data Documentation Initiative):
+- Machine-readable
+- Preserves knowledge
+- Enables sharing
+
+### SDMX (Statistical Data and Metadata Exchange):
+- International standard
+- Automated exchange
+- Consistent structure
+
+```{r metadata-example, echo=TRUE}
+# Example metadata structure
+metadata <- list(
+  survey_name = "Labour Force Survey 2025",
+  country = "SADC Member State",
+  sample_size = 5000,
+  response_rate = 0.78,
+  methodology = "Stratified two-stage",
+  quality_measures = list(
+    cv_national = 2.5,
+    cv_provincial = 5.8
+  )
+)
+
+str(metadata)
+```
+
+---
+
+# Quality Reporting Template
+
+## What to Include
+
+```{r quality-template, echo=FALSE}
+report_sections <- data.frame(
+  Section = c("Contact", "Statistical Presentation", "Accuracy", 
+              "Timeliness", "Comparability", "Revision"),
+  Required = c("Yes", "Yes", "Yes", "Yes", "Yes", "No"),
+  Description = c(
+    "Organization and contact details",
+    "Survey description and classification",
+    "Sampling and non-sampling errors",
+    "Reference period and release date",
+    "Changes from previous surveys",
+    "Revision policy and practice"
+  )
+)
+
+kable(report_sections, format = "html",
+      caption = "Standard Quality Report Sections") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+---
+
+class: center, middle, inverse
+
+# Session 7: Hands-On Practice
+## Learning by Doing
+### Hour 7: 15:00 - 16:00
+
+---
+
+# Practice Makes Perfect!
+
+## Three Progressive Exercises
+
+### Exercise 1: Basic Survey Design 🟢
+Create and analyze a simple survey
+
+### Exercise 2: Weight Calculations 🟡
+Handle complex weighting scenarios
+
+### Exercise 3: Variance Comparison 🔴
+Compare different estimation methods
+
+### Group Project: Complete Survey 🏆
+Design a real survey for your country
+
+---
+
+# Exercise 1: Design Your Survey
+
+## Scenario: Poverty Measurement
+
+### Your Task:
+Design a survey for measuring poverty in a country with:
+- Population: 10 million
+- Households: 2.5 million  
+- Budget: $300,000
+- Required precision: CV < 3% nationally
+
+### Work in Pairs - 15 Minutes
+
+---
+
+# Exercise 1: Solution
+
+```{r exercise1-full, echo=TRUE}
+# Step 1: Calculate sample size
+poverty_rate <- 0.30  # Expected 30%
+cv_target <- 0.03
+conf_level <- 0.95
+deff <- 1.8  # Design effect
+response_rate <- 0.82
+
+# Required effective sample size
+z <- qnorm((1 + conf_level) / 2)
+n_eff <- (z^2 * poverty_rate * (1-poverty_rate)) / 
+         (cv_target * poverty_rate)^2
+
+# Adjust for design effect and nonresponse
+n_total <- ceiling(n_eff * deff / response_rate)
+
+cat("Sample size needed:", n_total, "households\n")
+cat("Cost per household: $", round(300000/n_total, 2), "\n")
+
+# Step 2: Allocate to provinces (example with 5 provinces)
+provinces <- data.frame(
+  name = c("Capital", "North", "South", "East", "West"),
+  households = c(800000, 500000, 600000, 350000, 250000),
+  poverty_est = c(0.20, 0.35, 0.32, 0.40, 0.38)
+)
+
+# Proportional allocation
+provinces$n_prop <- round(n_total * provinces$households / sum(provinces$households))
+
+# Neyman allocation (optimal)
+provinces$n_neyman <- round(n_total * 
+  (provinces$households * sqrt(provinces$poverty_est * (1-provinces$poverty_est))) /
+  sum(provinces$households * sqrt(provinces$poverty_est * (1-provinces$poverty_est))))
+
+print(provinces)
+```
+
+---
+
+# Exercise 2: Calculate Weights
+
+## Handle Nonresponse and Calibration
+
+```{r exercise2-full, echo=TRUE}
+# Create realistic survey data
+set.seed(2025)
+survey_ex2 <- data.frame(
+  id = 1:1000,
+  stratum = rep(1:5, each = 200),
+  psu = rep(1:50, each = 20),
+  responded = sample(c(1, 0), 1000, replace = TRUE, 
+                    prob = c(0.8, 0.2))
+)
+
+# Population and sample sizes by stratum
+strata_info <- data.frame(
+  stratum = 1:5,
+  N_h = c(100000, 80000, 120000, 90000, 110000),
+  n_h = rep(200, 5)
+)
+
+# Merge and calculate base weights
+survey_ex2 <- merge(survey_ex2, strata_info, by = "stratum")
+survey_ex2$base_weight <- survey_ex2$N_h / survey_ex2$n_h
+
+# Nonresponse adjustment
+response_rates <- survey_ex2 %>%
+  group_by(stratum) %>%
+  summarise(rr = mean(responded))
+
+survey_ex2 <- merge(survey_ex2, response_rates, by = "stratum")
+survey_ex2$final_weight <- survey_ex2$base_weight / survey_ex2$rr
+
+# Check weight distribution
+survey_ex2 %>%
+  filter(responded == 1) %>%
+  group_by(stratum) %>%
+  summarise(
+    n = n(),
+    min_wt = min(final_weight),
+    mean_wt = mean(final_weight),
+    max_wt = max(final_weight),
+    cv_wt = sd(final_weight)/mean(final_weight) * 100
+  )
+```
+
+---
+
+# Exercise 3: Compare Variance Methods
+
+## See the Differences
+
+```{r exercise3-full, echo=TRUE, cache=TRUE}
+# Use responded cases only
+analysis_data <- survey_ex2[survey_ex2$responded == 1, ]
+analysis_data$outcome <- rnorm(nrow(analysis_data), 100, 20)
+
+# Create survey design
+design_ex3 <- svydesign(
+  ids = ~psu,
+  strata = ~stratum,
+  weights = ~final_weight,
+  data = analysis_data
+)
+
+# Method 1: Taylor series
+taylor_est <- svymean(~outcome, design_ex3)
+
+# Method 2: Bootstrap
+boot_design <- as.svrepdesign(design_ex3, type = "bootstrap", replicates = 200)
+boot_est <- svymean(~outcome, boot_design)
+
+# Method 3: Jackknife
+jk_design <- as.svrepdesign(design_ex3, type = "JKn")
+jk_est <- svymean(~outcome, jk_design)
+
+# Compare results
+comparison <- data.frame(
+  Method = c("Taylor", "Bootstrap", "Jackknife"),
+  Estimate = c(coef(taylor_est), coef(boot_est), coef(jk_est)),
+  SE = c(SE(taylor_est), SE(boot_est), SE(jk_est)),
+  CV = c(cv(taylor_est), cv(boot_est), cv(jk_est)) * 100
+)
+
+print(comparison)
+
+# Visualize differences
+barplot(comparison$SE, names.arg = comparison$Method,
+        main = "Standard Error by Method",
+        col = sadc_colors[c(2,3,4)],
+        ylab = "Standard Error")
+```
+
+---
+
+# Group Project
+
+## Design a Complete Survey
+
+### Your Mission:
+Design a household income and expenditure survey for your country
+
+### Deliverables:
+1. **Objectives** - What will you measure?
+2. **Sample Design** - Size, stages, stratification
+3. **Cost Estimate** - Realistic budget
+4. **Quality Targets** - Precision requirements
+5. **Timeline** - Field work schedule
+
+### Present in 10 minutes!
+
+---
+
+# Group Project Template
+
+```{r project-template, echo=TRUE}
+# Survey design template
+survey_plan <- list(
+  title = "National Household Income Survey 2025",
+  
+  objectives = c(
+    "Estimate poverty rate",
+    "Measure income inequality",
+    "Track household expenditure"
+  ),
+  
+  design = list(
+    population = 5000000,  # households
+    sample_size = 8000,
+    stages = 2,
+    strata = "Province x Urban/Rural",
+    clusters = 400,
+    households_per_cluster = 20
+  ),
+  
+  quality = list(
+    cv_national = 2,  # percent
+    cv_provincial = 5,
+    response_target = 80
+  ),
+  
+  budget = list(
+    total = 500000,  # USD
+    training = 50000,
+    fieldwork = 300000,
+    processing = 50000,
+    analysis = 100000
+  ),
+  
+  timeline = list(
+    planning = "3 months",
+    training = "2 weeks",
+    fieldwork = "6 weeks",
+    processing = "4 weeks",
+    reporting = "4 weeks"
+  )
+)
+
+str(survey_plan)
+```
+
+---
+
+class: center, middle, inverse
+
+# Session 8: Integration and Wrap-Up
+## Bringing It All Together
+### Hour 8: 16:00 - 17:00
+
+---
+
+# What We've Learned Today
+
+## Your New Foundation
+
+### ✅ **Concepts Mastered**
+- Probability sampling theory
+- Total survey error framework
+- Sample size determination
+- International quality standards
+
+### 💻 **Skills Acquired**
+- R survey package basics
+- Survey design creation
+- Weight calculation
+- Variance estimation
+
+### 🌍 **Context Understood**
+- SADC challenges
+- Real survey examples
+- Quality frameworks
+- Best practices
+
+---
+
+# Key Takeaways
+
+## Remember These!
+
+### 1. 🎯 **Sampling is Science, Not Guesswork**
+Every decision has mathematical backing
+
+### 2. 📊 **Error is More Than Sampling**
+Coverage, nonresponse, measurement all matter
+
+### 3. 💪 **Good Design Beats Big Samples**
+Smart stratification > throwing money at it
+
+### 4. 🔧 **R Makes Complex Analysis Simple**
+Let the computer do the heavy lifting
+
+### 5. 📋 **Standards Ensure Quality**
+Follow frameworks for credibility
+
+---
+
+# Common Mistakes to Avoid
+
+## Learn from Others!
+
+```{r mistakes-visual, echo=FALSE, fig.height=5}
+mistakes <- data.frame(
+  Mistake = c("Ignore weights", "Forget design effect", "No quality checks",
+             "Poor documentation", "Rush training", "Skip pilot"),
+  Frequency = c(70, 65, 55, 80, 60, 75),
+  Impact = c("High", "High", "Medium", "Medium", "High", "High")
+)
+
+ggplot(mistakes, aes(x = reorder(Mistake, Frequency), y = Frequency)) +
+  geom_col(aes(fill = Impact), width = 0.7) +
+  scale_fill_manual(values = c("High" = sadc_colors[6], "Medium" = sadc_colors[4])) +
+  coord_flip() +
+  labs(title = "Most Common Survey Mistakes",
+       subtitle = "% of surveys affected",
+       x = "", y = "Frequency (%)", fill = "Impact") +
+  theme(legend.position = "top")
+```
+
+---
+
+# Your Action Plan
+
+## Next Steps After Today
+
+### Week 1: Practice
+- [ ] Install R packages
+- [ ] Run example code
+- [ ] Analyze your own data
+
+### Week 2: Apply
+- [ ] Review current survey design
+- [ ] Calculate proper weights
+- [ ] Check variance estimates
+
+### Week 3: Improve
+- [ ] Identify weaknesses
+- [ ] Propose improvements
+- [ ] Document changes
+
+### Week 4: Share
+- [ ] Train colleagues
+- [ ] Create templates
+- [ ] Build network
+
+---
+
+# Resources for Continued Learning
+
+## Your Statistical Library
+
+### 📚 **Essential Books**
+- Lohr: *Sampling: Design and Analysis*
+- Lumley: *Complex Surveys: A Guide to Analysis Using R*
+- Groves et al: *Survey Methodology*
+
+### 💻 **Online Resources**
+- [R survey package](http://r-survey.r-forge.r-project.org/)
+- [UCLA Statistical Consulting](https://stats.idre.ucla.edu/)
+- [Eurostat Training](https://ec.europa.eu/eurostat/web/european-statistical-training-programme)
+
+### 🤝 **Networks**
+- International Statistical Institute
+- SADC Statistics Network
+- R-Ladies/R-User Groups
+
+---
+
+# Tomorrow: Stratified Sampling
+
+## Preview of Day 2
+
+### What We'll Cover:
+- Theory of stratification
+- Optimal allocation methods
+- Post-stratification techniques
+- Practical R implementation
+
+### Come Prepared:
+- Review today's materials
+- Bring a real stratification problem
+- Think about your strata variables
+
+```{r tomorrow-preview, echo=FALSE, fig.height=3}
+day2_topics <- data.frame(
+  Hour = 1:8,
+  Topic = c("Theory", "Allocation", "Boundaries", "R Practice",
+           "Variance", "Quality", "Exercises", "Integration")
+)
+
+ggplot(day2_topics, aes(x = Hour, y = 1, label = Topic)) +
+  geom_tile(fill = sadc_colors[2], color = "white", size = 1) +
+  geom_text(color = "white", fontface = "bold") +
+  theme_void() +
+  labs(title = "Day 2 Schedule Preview")
+```
+
+---
+
+# Quick Assessment
+
+## How Are We Doing?
+
+### Rate Today (1-5):
+1. **Content Clarity**: _____
+2. **Pace**: _____
+3. **Relevance**: _____
+4. **Exercises**: _____
+5. **Overall**: _____
+
+### One Thing You Learned:
+_________________________________
+
+### One Thing Still Unclear:
+_________________________________
+
+### One Thing to Improve:
+_________________________________
+
+---
+
+# Thank You!
+
+## Day 1 Complete! 🎉
+
+### You've Built a Strong Foundation
+- Theory ✓
+- Practice ✓
+- Tools ✓
+- Standards ✓
+
+### Remember:
+> "In God we trust, all others must bring data"
+> – W. Edwards Deming
+
+### See You Tomorrow at 8:00 AM!
+- Get rest
+- Review notes
+- Bring questions
+- Stay curious!
+
+---
+
+class: center, middle, inverse
+
+# END OF DAY 1
+
+## Advanced Sampling Methods for Household Surveys
+
+### Thank you for your participation!
+### Questions?
+
+#### Dr. Endri Raço
+#### SADC Regional Statistics Project
+#### November 2025
+
+---
+
+# Appendix: R Code Summary
+
+## All Today's Key Functions
+
+```{r code-summary, eval=FALSE}
+# Survey design
+svydesign(ids = ~cluster, strata = ~stratum, 
+          weights = ~weight, data = mydata)
+
+# Estimation
+svymean(~variable, design)
+svytotal(~variable, design)
+svyby(~outcome, ~group, design, svymean)
+
+# Variance methods
+as.svrepdesign(design, type = "bootstrap")
+as.svrepdesign(design, type = "JKn")
+
+# Quality measures
+SE()      # Standard error
+cv()      # Coefficient of variation
+confint() # Confidence intervals
+deff()    # Design effect
+
+# Sample size
+n = (z^2 * p * (1-p)) / e^2
+```
+
+---
+
+# Appendix: Troubleshooting
+
+## Common R Issues and Solutions
+
+### Problem: "Package not found"
+```r
+install.packages("package_name")
+```
+
+### Problem: "Object not found"
+```r
+# Check if object exists
+exists("object_name")
+# List all objects
+ls()
+```
+
+### Problem: "NA/NaN/Inf in foreign function call"
+```r
+# Remove missing values
+data <- na.omit(data)
+```
+
+### Problem: "Cannot allocate vector"
+```r
+# Clear memory
+gc()
+# Use smaller dataset
+data_sample <- data[sample(nrow(data), 1000), ]
+```
+  
