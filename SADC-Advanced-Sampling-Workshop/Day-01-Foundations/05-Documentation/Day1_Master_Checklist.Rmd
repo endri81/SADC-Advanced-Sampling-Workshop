@@ -1,0 +1,161 @@
+# Day 1 Master Checklist
+## SADC Advanced Sampling Workshop
+
+### Pre-Session (07:30 - 08:00)
+- [ ] Arrive at venue
+- [ ] Test all equipment
+- [ ] Projector working
+- [ ] Audio system tested
+- [ ] Microphones checked
+- [ ] Laptop connected
+- [ ] Backup laptop ready
+- [ ] Materials ready
+- [ ] Name tags printed
+- [ ] Folders prepared
+- [ ] USB drives loaded
+- [ ] Handouts printed (30 copies + 5 extra)
+- [ ] Evaluation forms printed
+- [ ] Room setup
+- [ ] Tables for group work
+- [ ] Power strips at each table
+- [ ] WiFi password displayed
+- [ ] Temperature comfortable
+- [ ] Water stations ready
+- [ ] Technical setup
+- [ ] R and RStudio running
+- [ ] All scripts tested
+- [ ] Data files accessible
+- [ ] GitHub repository accessible
+- [ ] Backup materials on USB
+
+### Registration (08:00 - 08:30)
+- [ ] Registration desk staffed
+- [ ] Attendance sheet ready
+- [ ] Distribute materials
+- [ ] Name tags
+- [ ] Folders with handouts
+- [ ] USB drives (if needed)
+- [ ] Workshop schedule
+- [ ] Direct participants to:
+  - [ ] Refreshments
+- [ ] Restrooms
+- [ ] Their seats
+- [ ] Technical support available
+- [ ] Record attendance
+
+### Morning Session 1 (08:30 - 10:15)
+#### Slides 1-45
+- [ ] Welcome and introductions (Slides 1-5)
+- [ ] Workshop objectives (Slides 6-20)
+- [ ] Sampling fundamentals (Slides 21-45)
+- [ ] Interactive elements
+- [ ] Icebreaker activity completed
+- [ ] First Q&A session
+- [ ] Live poll conducted
+- [ ] Time check: On schedule?
+  
+  ### Coffee Break (10:15 - 10:30)
+  - [ ] Encourage networking
+- [ ] Technical support available
+- [ ] Prepare for next session
+- [ ] Address any issues raised
+- [ ] Quick team debrief
+
+### Morning Session 2 (10:30 - 12:30)
+#### Slides 46-85
+- [ ] Simple Random Sampling theory (Slides 46-70)
+- [ ] Sample size determination (Slides 71-85)
+- [ ] R demonstrations
+- [ ] Live coding successful
+- [ ] All participants following
+- [ ] Code running correctly
+- [ ] Group exercise started
+- [ ] Solutions discussed
+
+### Lunch Break (12:30 - 13:30)
+- [ ] Save all work
+- [ ] Backup morning materials
+- [ ] Team meeting (quick review)
+- [ ] Prepare afternoon materials
+- [ ] Check participant energy levels
+- [ ] Address technical issues
+
+### Afternoon Session 1 (13:30 - 15:15)
+#### Slides 86-120
+- [ ] Estimation and inference (Slides 86-105)
+- [ ] Survey weights (Slides 106-120)
+- [ ] Practical exercises
+- [ ] Individual work time
+- [ ] Group discussions
+- [ ] Solutions presented
+- [ ] Q&A session
+
+### Coffee Break (15:15 - 15:30)
+- [ ] Energy check
+- [ ] Prepare final session
+- [ ] Collect informal feedback
+- [ ] Technical issues resolved
+
+### Afternoon Session 2 (15:30 - 17:00)
+#### Slides 121-148
+- [ ] Quality assessment (Slides 121-135)
+- [ ] Practical application (Slides 136-148)
+- [ ] Final exercise
+- [ ] Day 1 summary
+- [ ] Preview Day 2
+- [ ] Homework assigned
+
+### Wrap-up (16:45 - 17:00)
+- [ ] Distribute evaluation forms
+- [ ] Collect completed forms
+- [ ] Announce Day 2 logistics
+- [ ] Thank participants
+- [ ] Ensure all save their work
+- [ ] Distribute homework materials
+
+### Post-Session (17:00 - 17:30)
+- [ ] Collect all materials
+- [ ] Save and backup all files
+- [ ] Participant work
+- [ ] Attendance records
+- [ ] Evaluation forms
+- [ ] Progress tracking
+- [ ] Team debrief
+- [ ] What went well?
+  - [ ] What needs adjustment?
+  - [ ] Issues to address?
+  - [ ] Changes for Day 2?
+  - [ ] Prepare Day 1 report
+- [ ] Send follow-up email to participants
+
+### Technical Backup Plans
+- [ ] If projector fails: Use backup or printed slides
+- [ ] If internet fails: Use offline materials
+- [ ] If R crashes: Have backup scripts ready
+- [ ] If power fails: Battery backup for essential equipment
+- [ ] If participants can't install software: Cloud backup ready
+
+### Quality Indicators
+- [ ] >80% attendance maintained
+- [ ] >75% exercises completed
+- [ ] <5 technical issues unresolved
+- [ ] All modules covered
+- [ ] Positive participant engagement
+
+### Notes Section
+_Use for important observations:_
+- 
+- 
+- 
+- 
+
+### Emergency Contacts
+- Venue Support: ___________
+- IT Support: ___________
+- Workshop Coordinator: ___________
+- Medical Emergency: ___________
+
+---
+**Checklist Version**: 1.0  
+**Date**: November 2025  
+**Prepared by**: Dr. Endri Raço
