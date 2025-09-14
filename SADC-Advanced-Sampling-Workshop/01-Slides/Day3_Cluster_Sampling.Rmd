@@ -1,0 +1,4742 @@
+---
+title: "Day 3: Multi-Stage and Cluster Sampling"
+subtitle: "Part 1: Introduction to Cluster Sampling (Slides 1-75)"
+author: "SADC Survey Sampling Workshop"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: [default, default-fonts]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%/%total%"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 10, 
+  fig.height = 4,
+  fig.align = "center",
+  cache = FALSE,
+  comment = "#>"
+)
+
+# Load packages
+library(tidyverse)
+library(survey)
+library(knitr)
+library(kableExtra)
+
+# Create data inline to avoid file path issues
+set.seed(2024)
+n_psu <- 500
+
+# Create PSU frame
+psu_frame <- data.frame(
+  psu_id = 1:n_psu,
+  province = sample(c("North", "South", "East", "West"), 
+                   n_psu, replace = TRUE, 
+                   prob = c(0.25, 0.35, 0.20, 0.20)),
+  area = sample(c("Urban", "Rural"), 
+               n_psu, replace = TRUE, 
+               prob = c(0.40, 0.60)),
+  stringsAsFactors = FALSE
+)
+
+# Assign PSU sizes
+psu_frame$size <- ifelse(
+  psu_frame$area == "Urban",
+  round(rlnorm(sum(psu_frame$area == "Urban"), log(800), 0.4)),
+  round(rlnorm(sum(psu_frame$area == "Rural"), log(400), 0.5))
+)
+psu_frame$size <- pmax(psu_frame$size, 50)
+
+# Create sample household data with clustering
+create_clustered_data <- function(n_psus = 100, avg_cluster_size = 30) {
+  data_list <- list()
+  
+  for (i in 1:n_psus) {
+    # PSU effect
+    psu_effect <- rnorm(1, 0, 5000)
+    n_hh <- round(rnorm(1, avg_cluster_size, 5))
+    n_hh <- max(10, n_hh)
+    
+    data_list[[i]] <- data.frame(
+      psu_id = i,
+      household_id = 1:n_hh,
+      income = round(rlnorm(n_hh, log(50000 + psu_effect), 0.4)),
+      education_years = pmin(20, round(10 + psu_effect/5000 + rnorm(n_hh, 0, 2))),
+      has_electricity = rbinom(n_hh, 1, plogis(qlogis(0.7) + psu_effect/50000)),
+      area = sample(c("Urban", "Rural"), n_hh, replace = TRUE, prob = c(0.4, 0.6))
+    )
+  }
+  
+  do.call(rbind, data_list)
+}
+
+# Create sample data
+cluster_data <- create_clustered_data(100, 30)
+
+# Define functions inline
+calculate_icc <- function(data, outcome_var, cluster_var) {
+  formula <- as.formula(paste(outcome_var, "~", cluster_var))
+  anova_result <- aov(formula, data = data)
+  ms_between <- summary(anova_result)[[1]]["Mean Sq"][1, 1]
+  ms_within <- summary(anova_result)[[1]]["Mean Sq"][2, 1]
+  cluster_sizes <- table(data[[cluster_var]])
+  n_bar <- mean(cluster_sizes)
+  icc <- (ms_between - ms_within) / (ms_between + (n_bar - 1) * ms_within)
+  return(list(icc = max(0, icc), ms_between = ms_between, ms_within = ms_within, n_bar = n_bar))
+}
+
+calculate_deff_cluster <- function(cluster_size, icc) {
+  1 + (cluster_size - 1) * icc
+}
+
+calculate_neff <- function(n, deff) {
+  n / deff
+}
+
+select_pps <- function(psu_frame, n_psu, size_var = "size") {
+  psu_frame$pps_prob <- psu_frame[[size_var]] / sum(psu_frame[[size_var]])
+  interval <- 1 / n_psu
+  start <- runif(1, 0, interval)
+  selections <- start + (0:(n_psu - 1)) * interval
+  psu_frame$cum_prob <- cumsum(psu_frame$pps_prob)
+  selected_indices <- sapply(selections, function(x) {
+    which(psu_frame$cum_prob >= x)[1]
+  })
+  psu_frame$selected <- FALSE
+  psu_frame$selected[selected_indices] <- TRUE
+  psu_frame$psu_selection_prob <- ifelse(psu_frame$selected, 
+                                         n_psu * psu_frame$pps_prob, 0)
+  return(psu_frame)
+}
+
+simulate_cluster_effect <- function(n_sim = 100, n_clusters = 30, 
+                                   cluster_size = 25, icc = 0.05) {
+  results <- numeric(n_sim)
+  for (i in 1:n_sim) {
+    cluster_means <- rnorm(n_clusters, 0, sqrt(icc))
+    data <- list()
+    for (j in 1:n_clusters) {
+      cluster_data <- rnorm(cluster_size, cluster_means[j], sqrt(1 - icc))
+      data[[j]] <- cluster_data
+    }
+    all_data <- unlist(data)
+    results[i] <- mean(all_data)
+  }
+  theoretical_var_srs <- 1 / (n_clusters * cluster_size)
+  actual_var <- var(results)
+  empirical_deff <- actual_var / theoretical_var_srs
+  theoretical_deff <- calculate_deff_cluster(cluster_size, icc)
+  return(list(
+    empirical_deff = empirical_deff,
+    theoretical_deff = theoretical_deff,
+    results = results
+  ))
+}
+```
+
+---
+class: center, middle, inverse
+
+# Day 3: Multi-Stage and Cluster Sampling
+
+## From Simple to Complex Reality
+
+### "Because populations cluster naturally"
+
+---
+
+## Welcome to Day 3!
+
+### Building on Days 1-2:
+
+Day 1: Simple Random Sampling ✓  
+Day 2: Stratified Sampling ✓  
+**Day 3: Cluster & Multi-Stage** 👈  
+Day 4: Complex Designs  
+Day 5: Special Topics  
+
+**Bottom line:** Real surveys need clustering
+
+---
+
+## Today's Journey
+
+```{r day3_schedule}
+schedule <- data.frame(
+  Part = 1:5,
+  Time = c("08:00-09:30", "09:45-11:15", "11:30-13:00", 
+          "14:00-15:30", "15:45-17:00"),
+  Topic = c("Cluster Concepts & ICC", "Two-Stage Design",
+           "PPS Selection", "Variance & Optimization",
+           "Case Studies & Practice"),
+  Slides = c("1-75", "76-150", "151-225", "226-300", "301-350")
+)
+
+kable(schedule) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12)
+```
+
+**Bottom line:** Master multi-stage by day's end
+
+---
+
+## Why Cluster Sampling?
+
+### The reality:
+
+- **No frame** of all households
+- **Cost** of visiting scattered units
+- **Natural groupings** exist
+- **Logistics** easier with clusters
+
+**Bottom line:** Practical necessity, not choice
+
+---
+
+## Natural Clustering
+
+```{r natural_clustering, fig.height=4}
+# Visualize natural clustering
+set.seed(2024)
+clustered <- data.frame(
+  x = c(rnorm(50, 2, 0.5), rnorm(50, 5, 0.5), rnorm(50, 8, 0.5)),
+  y = c(rnorm(50, 2, 0.5), rnorm(50, 5, 0.5), rnorm(50, 3, 0.5)),
+  cluster = factor(rep(1:3, each = 50))
+)
+
+ggplot(clustered, aes(x, y, color = cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "Populations Naturally Cluster",
+       subtitle = "Villages, Schools, Clinics, Neighborhoods") +
+  theme(legend.position = "none")
+```
+
+**Bottom line:** Geography creates clusters
+
+---
+
+## Cost Comparison
+
+```{r cost_comparison}
+# Compare SRS vs Cluster costs
+cost_data <- data.frame(
+  Design = c("SRS", "Cluster"),
+  Travel = c(50000, 15000),
+  Interview = c(40000, 40000),
+  Training = c(10000, 10000),
+  Total = c(100000, 65000)
+)
+
+kable(cost_data) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Clustering saves 35% on costs
+
+---
+
+## The Trade-off
+
+```{r tradeoff_viz, fig.height=4}
+# Cost vs Precision trade-off
+sample_sizes <- seq(100, 1000, 50)
+cost_srs <- 100 * sample_sizes
+cost_cluster <- 20000 + 30 * sample_sizes
+precision_srs <- 1 / sqrt(sample_sizes)
+precision_cluster <- 1 / sqrt(sample_sizes / 1.5)  # DEFF = 1.5
+
+data.frame(
+  n = rep(sample_sizes, 2),
+  Cost = c(cost_srs, cost_cluster),
+  Precision = c(precision_srs, precision_cluster),
+  Design = rep(c("SRS", "Cluster"), each = length(sample_sizes))
+) %>%
+  ggplot(aes(x = Cost/1000, y = 1/Precision, color = Design)) +
+  geom_line(size = 1.5) +
+  theme_minimal() +
+  labs(x = "Cost (1000s)", y = "Effective Sample Size",
+       title = "Cost-Precision Trade-off")
+```
+
+**Bottom line:** Cluster cheaper but less precise
+
+---
+
+## Multi-Stage Terminology
+
+```{r terminology_table}
+terms <- data.frame(
+  Term = c("PSU", "SSU", "Ultimate Unit", "Stage", "Cluster"),
+  Definition = c("Primary Sampling Unit (e.g., village)",
+                "Secondary Sampling Unit (e.g., household)",
+                "Final unit of analysis",
+                "Level of sampling",
+                "Group of units")
+)
+
+kable(terms) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Know the vocabulary
+
+---
+
+## Our Sample Data
+
+```{r show_data}
+# Basic info about our data
+c(Total_PSUs = length(unique(cluster_data$psu_id)),
+  Total_Households = nrow(cluster_data),
+  Avg_Cluster_Size = round(mean(table(cluster_data$psu_id))))
+```
+
+**Bottom line:** 100 PSUs, ~3000 households
+
+---
+
+## PSU Characteristics
+
+```{r psu_characteristics}
+# PSU frame summary
+psu_frame %>%
+  head(100) %>%
+  group_by(area) %>%
+  summarise(
+    Count = n(),
+    Avg_Size = round(mean(size)),
+    Min_Size = min(size),
+    Max_Size = max(size)
+  ) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Urban PSUs larger than rural
+
+---
+
+## Geographic Distribution
+
+```{r geographic_dist, fig.height=4}
+psu_frame %>%
+  head(200) %>%
+  ggplot(aes(x = province, fill = area)) +
+  geom_bar(position = "dodge") +
+  theme_minimal() +
+  labs(title = "PSU Distribution by Province and Area",
+       x = "Province", y = "Number of PSUs") +
+  scale_fill_manual(values = c("Urban" = "darkblue", "Rural" = "darkgreen"))
+```
+
+**Bottom line:** Uneven geographic spread
+
+---
+
+## What is ICC?
+
+### Intraclass Correlation Coefficient
+
+**Measures similarity within clusters**
+
+$$\rho = \frac{\sigma^2_{between}}{\sigma^2_{between} + \sigma^2_{within}}$$
+
+- ρ = 0: No clustering effect
+- ρ = 0.05: Mild clustering  
+- ρ = 0.20: Strong clustering
+
+**Bottom line:** ICC quantifies clustering
+
+---
+
+## Calculating ICC
+
+```{r calc_icc}
+# Calculate ICC for income
+icc_result <- calculate_icc(
+  data = cluster_data,
+  outcome_var = "income",
+  cluster_var = "psu_id"
+)
+
+c(ICC = round(icc_result$icc, 4),
+  Between_MS = round(icc_result$ms_between, 0),
+  Within_MS = round(icc_result$ms_within, 0))
+```
+
+**Bottom line:** ICC shows clustering strength
+
+---
+
+## ICC Interpretation
+
+```{r icc_interpretation}
+# What does the ICC mean?
+icc_value <- icc_result$icc
+
+# Variance decomposition
+between_var <- icc_value * 100
+within_var <- (1 - icc_value) * 100
+
+data.frame(
+  Component = c("Between PSUs", "Within PSUs"),
+  Variance_Pct = c(round(between_var, 1), round(within_var, 1))
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Most variation is within PSUs
+
+---
+
+## ICC for Different Variables
+
+```{r icc_multiple}
+# Calculate ICC for multiple variables
+variables <- c("income", "education_years", "has_electricity")
+icc_values <- numeric(length(variables))
+
+for (i in seq_along(variables)) {
+  icc_values[i] <- calculate_icc(
+    cluster_data, variables[i], "psu_id"
+  )$icc
+}
+
+data.frame(
+  Variable = variables,
+  ICC = round(icc_values, 4),
+  Interpretation = ifelse(icc_values < 0.05, "Low",
+                         ifelse(icc_values < 0.15, "Moderate", "High"))
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** ICC varies by variable
+
+---
+
+## Visualizing Clustering
+
+```{r viz_clustering, fig.height=4}
+# Sample 5 PSUs to visualize
+set.seed(2024)
+sample_psus <- sample(unique(cluster_data$psu_id), 5)
+
+cluster_data %>%
+  filter(psu_id %in% sample_psus) %>%
+  ggplot(aes(x = factor(psu_id), y = income)) +
+  geom_boxplot(fill = "lightblue") +
+  theme_minimal() +
+  labs(x = "PSU ID", y = "Income",
+       title = "Income Distribution Within PSUs",
+       subtitle = "Note similarity within clusters")
+```
+
+**Bottom line:** Within-PSU homogeneity visible
+
+---
+
+## Design Effect Formula
+
+### DEFF for cluster sampling:
+
+$$DEFF = 1 + (m - 1) \times \rho$$
+
+Where:
+- m = cluster size
+- ρ = ICC
+
+**Bottom line:** Larger clusters → larger DEFF
+
+---
+
+## Calculate DEFF
+
+```{r calc_deff_cluster}
+# For different cluster sizes
+cluster_sizes <- c(10, 20, 30, 50, 100)
+icc <- 0.05  # Typical value
+
+deff_values <- sapply(cluster_sizes, function(m) {
+  calculate_deff_cluster(m, icc)
+})
+
+data.frame(
+  Cluster_Size = cluster_sizes,
+  DEFF = round(deff_values, 2),
+  Efficiency_Loss = paste0(round((deff_values - 1) * 100, 0), "%")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Cluster size 30 → 45% efficiency loss
+
+---
+
+## DEFF Visualization
+
+```{r deff_viz, fig.height=4}
+# DEFF across cluster sizes and ICCs
+expand.grid(
+  cluster_size = seq(5, 100, 5),
+  icc = c(0.01, 0.05, 0.10, 0.20)
+) %>%
+  mutate(
+    DEFF = calculate_deff_cluster(cluster_size, icc),
+    ICC = factor(paste("ICC =", icc))
+  ) %>%
+  ggplot(aes(x = cluster_size, y = DEFF, color = ICC)) +
+  geom_line(size = 1.2) +
+  theme_minimal() +
+  labs(x = "Cluster Size (m)", y = "Design Effect",
+       title = "DEFF Increases with Cluster Size and ICC")
+```
+
+**Bottom line:** Keep clusters small when possible
+
+---
+
+## Effective Sample Size
+
+```{r effective_sample}
+# Actual vs effective sample size
+actual_n <- 1000
+cluster_size <- 25
+icc <- 0.05
+
+deff <- calculate_deff_cluster(cluster_size, icc)
+n_eff <- calculate_neff(actual_n, deff)
+
+data.frame(
+  Measure = c("Actual Sample", "DEFF", "Effective Sample", "Loss"),
+  Value = c(actual_n, round(deff, 2), round(n_eff, 0),
+           paste0(round((1 - n_eff/actual_n) * 100, 0), "%"))
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** 1000 clustered ≈ 455 independent
+
+---
+
+## Knowledge Check #1
+
+### Quick self-test:
+
+1. ICC measures _______ within clusters
+2. DEFF = 1 + (m-1) × _______
+3. Higher ICC means _______ precision
+4. Clustering saves _______ but loses _______
+
+Think before continuing!
+
+**Bottom line:** Similarity, ρ, lower, cost, precision
+
+---
+
+## Two-Stage Design
+
+```{r two_stage_design}
+# Typical two-stage parameters
+design_params <- data.frame(
+  Stage = c("Stage 1", "Stage 2"),
+  Unit = c("PSU (Village)", "Household"),
+  Selection = c("PPS or SRS", "SRS within PSU"),
+  Sample = c("100 PSUs", "20 HH per PSU"),
+  Total = c("100", "2000")
+)
+
+kable(design_params) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Sample clusters, then units within
+
+---
+
+## Why Two Stages?
+
+### Advantages:
+
+✓ **No complete frame needed**  
+✓ **Cost efficient**  
+✓ **Easier supervision**  
+✓ **Natural for hierarchical data**  
+
+### Disadvantages:
+✗ **Loss of precision**  
+✗ **Complex weights**  
+✗ **Variance estimation harder**  
+
+**Bottom line:** Practical benefits outweigh complexity
+
+---
+
+## Stage 1: Select PSUs
+
+```{r stage1_selection}
+# Example: Select 30 PSUs
+n_psu <- 30
+
+# Method 1: Simple Random Sampling
+set.seed(2024)
+srs_psus <- sample(psu_frame$psu_id[1:100], n_psu)
+
+# Method 2: PPS (we'll detail later)
+pps_frame <- select_pps(psu_frame[1:100,], n_psu, size_var = "size")
+
+c(SRS_Selected = length(srs_psus),
+  PPS_Selected = sum(pps_frame$selected))
+```
+
+**Bottom line:** 30 PSUs selected from 100
+
+---
+
+## Stage 2: Select Households
+
+```{r stage2_selection_1}
+# Within each selected PSU, select households
+n_hh_per_psu <- 20
+
+# Example for one PSU
+example_psu <- cluster_data %>%
+  filter(psu_id == srs_psus[1])
+
+set.seed(2024)
+selected_hh <- sample(1:nrow(example_psu), 
+                     min(n_hh_per_psu, nrow(example_psu)))
+
+c(PSU_Size = nrow(example_psu),
+  Selected_HH = length(selected_hh),
+  Selection_Rate = round(length(selected_hh) / nrow(example_psu), 3))
+```
+
+**Bottom line:** 20 households from each PSU
+
+---
+
+## Combined Selection
+
+```{r combined_selection}
+# Total sample from two-stage design
+total_sample <- n_psu * n_hh_per_psu
+
+# Selection probabilities
+prob_psu <- n_psu / 100
+prob_hh <- n_hh_per_psu / 30  # Average cluster size
+prob_overall <- prob_psu * prob_hh
+
+c(Total_Sample = total_sample,
+  PSU_Prob = round(prob_psu, 4),
+  HH_Prob = round(prob_hh, 4),
+  Overall_Prob = round(prob_overall, 4))
+```
+
+**Bottom line:** Overall probability = product of stages
+
+---
+
+## Energy Check
+
+### ⚡ Quick refresh (30 seconds):
+
+1. Stand and stretch
+2. Deep breath × 3
+3. Shake out hands
+4. Ready to continue!
+
+Share with neighbor:
+"One thing I learned about ICC is..."
+
+**Bottom line:** Movement activates learning
+
+---
+
+## Simple vs Complex Designs
+
+```{r design_comparison, fig.height=4}
+designs <- data.frame(
+  Design = c("SRS", "Stratified", "Cluster", "Stratified\nCluster"),
+  Cost = c(100, 95, 60, 65),
+  Precision = c(100, 115, 70, 85),
+  Complexity = c(20, 40, 60, 80)
+)
+
+designs %>%
+  pivot_longer(-Design) %>%
+  ggplot(aes(x = Design, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(y = "Relative Score", title = "Design Comparison")
+```
+
+**Bottom line:** Cluster trades precision for cost
+
+---
+
+## When to Use Clustering
+
+### Use cluster sampling when:
+
+✓ Population naturally grouped  
+✓ No complete frame exists  
+✓ Travel costs high  
+✓ Can accept precision loss  
+
+### Avoid when:
+✗ ICC very high (>0.2)  
+✗ Need precise estimates  
+✗ Clusters vary greatly in size  
+
+**Bottom line:** Context determines choice
+
+---
+
+## Real Example: DHS
+
+```{r dhs_example}
+# Demographic & Health Survey design
+dhs_design <- data.frame(
+  Parameter = c("Countries", "PSUs per country", "HH per PSU",
+               "Total sample", "Typical ICC", "DEFF"),
+  Value = c("90+", "400-600", "25-30", "12,000-15,000",
+           "0.05-0.15", "2-3")
+)
+
+kable(dhs_design) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Standard international design
+
+---
+
+## Your Turn: Calculate ICC
+
+### Exercise (3 minutes):
+
+Calculate ICC for education:
+
+```{r exercise_icc}
+# Calculate ICC for education
+icc_education <- calculate_icc(
+  data = cluster_data,
+  outcome_var = "education_years",
+  cluster_var = "psu_id"
+)
+
+# Results
+c(ICC = round(icc_education$icc, 4),
+  DEFF_25 = round(calculate_deff_cluster(25, icc_education$icc), 2))
+```
+
+**Bottom line:** Practice reinforces concepts
+
+---
+
+## Cluster Size Distribution
+
+```{r cluster_size_dist, fig.height=4}
+# PSU sizes from our frame
+psu_frame %>%
+  head(200) %>%
+  ggplot(aes(x = size)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  geom_vline(xintercept = mean(psu_frame$size[1:200]), 
+            color = "red", linetype = "dashed", size = 1) +
+  theme_minimal() +
+  labs(x = "PSU Size (Number of Households)", y = "Count",
+       title = "PSU Size Distribution")
+```
+
+**Bottom line:** Wide variation in PSU sizes
+
+---
+
+## Unequal Cluster Sizes
+
+```{r unequal_sizes}
+# Impact of unequal sizes
+size_stats <- data.frame(
+  Statistic = c("Mean", "Median", "Min", "Max", "CV"),
+  Value = c(
+    round(mean(psu_frame$size[1:100])),
+    round(median(psu_frame$size[1:100])),
+    min(psu_frame$size[1:100]),
+    max(psu_frame$size[1:100]),
+    round(sd(psu_frame$size[1:100]) / mean(psu_frame$size[1:100]), 2)
+  )
+)
+
+kable(size_stats) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** High variability needs PPS
+
+---
+
+## Progress Check
+
+### ✅ What we've covered:
+
+- Why cluster sampling needed
+- ICC concept and calculation
+- Design effect (DEFF)
+- Two-stage structure
+- Real examples
+
+### 🎯 Coming next:
+- PPS selection
+- Weight calculation
+- Optimization
+
+**Bottom line:** Foundation laid for advanced topics
+
+---
+
+## Group Discussion
+
+### Discuss (2 minutes):
+
+With your neighbor:
+1. What's the ICC in your surveys?
+2. How large are your clusters?
+3. What's your typical DEFF?
+
+Share one insight!
+
+**Bottom line:** Learn from each other's experience
+
+---
+
+## Common ICC Values
+
+```{r common_icc}
+# Typical ICC values by variable type
+typical_icc <- data.frame(
+  Variable = c("Income", "Education", "Health", 
+              "Agriculture", "Attitudes"),
+  Typical_ICC = c("0.05-0.15", "0.02-0.10", "0.01-0.05",
+                  "0.10-0.30", "0.01-0.03"),
+  Reason = c("Economic clustering", "School effects",
+            "Clinic catchment", "Soil/climate", "Weak clustering")
+)
+
+kable(typical_icc) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Know expected ICCs for planning
+
+---
+
+## Cost Structure
+
+```{r cost_structure, fig.height=4}
+# Cost components in cluster sampling
+costs <- data.frame(
+  Component = c("Fixed", "Per PSU", "Per HH", "Travel"),
+  SRS = c(10000, 0, 50, 30),
+  Cluster = c(10000, 500, 50, 5)
+)
+
+costs %>%
+  pivot_longer(-Component) %>%
+  ggplot(aes(x = Component, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(y = "Cost ($)", title = "Cost Structure Comparison")
+```
+
+**Bottom line:** Cluster saves on travel
+
+---
+
+## Simulation Demo
+
+```{r simulation_demo}
+# Simulate cluster effect
+set.seed(2024)
+sim_result <- simulate_cluster_effect(
+  n_sim = 100,
+  n_clusters = 30,
+  cluster_size = 25,
+  icc = 0.05
+)
+
+c(Theoretical_DEFF = round(sim_result$theoretical_deff, 2),
+  Empirical_DEFF = round(sim_result$empirical_deff, 2))
+```
+
+**Bottom line:** Theory matches practice
+
+---
+
+## Variance Components
+
+```{r variance_components}
+# Decompose total variance
+total_var <- var(cluster_data$income)
+icc <- 0.05
+
+between_var <- icc * total_var
+within_var <- (1 - icc) * total_var
+
+data.frame(
+  Component = c("Total", "Between PSU", "Within PSU"),
+  Variance = round(c(total_var, between_var, within_var), 0),
+  Percent = c(100, round(icc * 100, 1), round((1-icc) * 100, 1))
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Most variation is within PSUs
+
+---
+
+## Quality Implications
+
+```{r quality_implications}
+# Impact on survey quality metrics
+quality_impact <- data.frame(
+  Metric = c("Standard Error", "Confidence Interval", 
+            "Sample Size Needed"),
+  SRS = c("1.0×", "±2%", "400"),
+  Cluster_DEFF2 = c("1.4×", "±2.8%", "800"),
+  Cluster_DEFF3 = c("1.7×", "±3.4%", "1200")
+)
+
+kable(quality_impact) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** DEFF multiplies sample needs
+
+---
+
+## Documentation Needs
+
+### Document for cluster samples:
+
+☐ PSU frame source and coverage  
+☐ Selection method (SRS/PPS)  
+☐ Cluster sizes (target and actual)  
+☐ ICC estimates  
+☐ DEFF calculations  
+☐ Weight components  
+
+**Bottom line:** More complex = more documentation
+
+---
+
+## Software Setup
+
+```{r software_note}
+# R survey package handles clustering
+cat("# Specify cluster design in R:
+design <- svydesign(
+  ids = ~psu_id,          # Cluster variable
+  strata = ~stratum,      # If stratified
+  weights = ~weight,      # Sampling weights
+  data = survey_data
+)
+
+# Automatic variance adjustment!")
+```
+
+**Bottom line:** Software handles complexity
+
+---
+
+## Part 1 Summary
+
+### You now understand:
+
+✅ Why clustering necessary  
+✅ ICC and its interpretation  
+✅ Design effect calculation  
+✅ Two-stage structure  
+✅ Cost-precision trade-offs  
+
+**Bottom line:** Ready for implementation details!
+
+---
+
+## Quick Quiz
+
+### Test yourself:
+
+1. DEFF = 2 means need ___× sample size
+2. ICC = 0 means no _______
+3. Larger clusters → _______ DEFF
+4. PPS stands for _______
+
+**Bottom line:** 2, clustering, higher, Probability Proportional to Size
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### Before you go:
+- Save your work
+- Stretch your legs
+- Hydrate
+
+### When we return:
+- PPS selection methods
+- Weight calculations
+- Practical implementation
+
+**Bottom line:** Rest and return ready!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 1
+
+## Slides 1-75 Complete
+
+### Next: Part 2 - PPS Selection & Weights
+
+---
+
+
+---
+
+## Welcome Back!
+
+### Part 2: PPS Selection and Weights
+
+Ready to dive into:
+- Probability Proportional to Size (PPS)
+- Weight calculations
+- Two-stage variance
+- Practical implementation
+
+**Bottom line:** Master the mechanics
+
+---
+
+## Why PPS?
+
+### The problem with equal probability:
+
+Small PSUs overrepresented  
+Large PSUs underrepresented  
+Inefficient estimates  
+Complex weights  
+
+**Bottom line:** Size matters in sampling
+
+---
+
+## PPS Concept
+
+### Give larger units higher selection probability
+
+If PSU has 2× the population:
+→ Gets 2× the selection probability
+→ More representative sample
+→ Self-weighting possible
+
+**Bottom line:** Proportional = fair
+
+---
+
+## PPS Example
+
+```{r pps_example}
+# Simple PSU frame
+psus <- data.frame(
+  PSU = c("A", "B", "C", "D", "E"),
+  Size = c(500, 1500, 800, 200, 1000)
+)
+
+# Calculate selection probabilities
+psus$Prob <- psus$Size / sum(psus$Size)
+psus$Prob_Pct <- paste0(round(psus$Prob * 100, 1), "%")
+
+kable(psus[, c("PSU", "Size", "Prob_Pct")]) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** PSU B has 3× chance of PSU D
+
+---
+
+## Cumulative Probabilities
+
+```{r cumulative_prob}
+# Add cumulative probabilities
+psus$Cumulative <- cumsum(psus$Prob)
+psus$Range <- paste0(
+  c(0, psus$Cumulative[-5]), " - ", 
+  psus$Cumulative
+)
+
+kable(psus[, c("PSU", "Prob", "Cumulative")]) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Creates selection intervals
+
+---
+
+## Systematic PPS
+
+### Most common PPS method:
+
+1. Calculate cumulative probabilities
+2. Determine interval: k = 1/n
+3. Random start: 0 < r < k
+4. Select at: r, r+k, r+2k, ...
+
+**Bottom line:** Ensures spread
+
+---
+
+## Systematic PPS Example
+
+```{r systematic_pps}
+# Select 2 PSUs with systematic PPS
+n_select <- 2
+interval <- 1 / n_select
+
+# Random start
+set.seed(2024)
+start <- runif(1, 0, interval)
+
+# Selection points
+selections <- start + (0:(n_select-1)) * interval
+
+c(Start = round(start, 3),
+  Interval = interval,
+  Select_at = paste(round(selections, 3), 
+                    collapse = ", "))
+```
+
+**Bottom line:** Systematic ensures balance
+
+---
+
+## Which PSUs Selected?
+
+```{r which_selected}
+# Determine which PSUs are selected
+selected <- sapply(selections, function(x) {
+  which(psus$Cumulative >= x)[1]
+})
+
+psus$Selected <- psus$PSU %in% psus$PSU[selected]
+
+psus[, c("PSU", "Size", "Cumulative", "Selected")] %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** B and E selected (larger PSUs)
+
+---
+
+## PPS with Replacement
+
+```{r pps_wr}
+# Alternative: PPS with replacement
+set.seed(2024)
+n_draws <- 2
+
+# Draw with probability proportional to size
+selected_wr <- sample(
+  psus$PSU, 
+  size = n_draws,
+  prob = psus$Size,
+  replace = TRUE
+)
+
+table(selected_wr)
+```
+
+**Bottom line:** Same PSU can be selected twice
+
+---
+
+## PPS Without Replacement
+
+### More complex but preferred:
+
+- No duplicate PSUs
+- More efficient
+- Requires special algorithms
+- Unequal probabilities
+
+**Bottom line:** Better but harder
+
+---
+
+## Large Dataset PPS
+
+```{r large_pps_setup}
+# Create larger frame
+set.seed(2024)
+large_frame <- data.frame(
+  psu_id = 1:100,
+  size = round(rlnorm(100, log(500), 0.5))
+)
+
+# Summary
+summary(large_frame$size)
+```
+
+**Bottom line:** Real frames have many PSUs
+
+---
+
+## Select from Large Frame
+
+```{r large_pps_select}
+# Select 20 PSUs with PPS
+n_psu <- 20
+
+# Calculate probabilities
+large_frame$prob <- large_frame$size / sum(large_frame$size)
+large_frame$cum_prob <- cumsum(large_frame$prob)
+
+# Systematic selection
+interval <- 1 / n_psu
+start <- runif(1, 0, interval)
+selections <- start + (0:(n_psu-1)) * interval
+
+# Which selected
+selected_ids <- sapply(selections, function(x) {
+  which(large_frame$cum_prob >= x)[1]
+})
+
+length(unique(selected_ids))
+```
+
+**Bottom line:** 20 PSUs selected systematically
+
+---
+
+## Visualize PPS Selection
+
+```{r viz_pps, fig.height=3.5}
+large_frame$selected <- large_frame$psu_id %in% selected_ids
+
+ggplot(large_frame, aes(x = size, fill = selected)) +
+  geom_histogram(bins = 20, alpha = 0.7) +
+  theme_minimal() +
+  scale_fill_manual(values = c("gray", "red")) +
+  labs(title = "PPS Selection Favors Larger PSUs",
+       x = "PSU Size", y = "Count")
+```
+
+**Bottom line:** Larger PSUs more likely selected
+
+---
+
+## Selection Probabilities
+
+```{r selection_probs}
+# Calculate actual selection probabilities
+large_frame$select_prob <- ifelse(
+  large_frame$selected,
+  n_psu * large_frame$prob,
+  0
+)
+
+# Summary for selected PSUs
+selected_frame <- large_frame[large_frame$selected, ]
+
+summary(selected_frame$select_prob)
+```
+
+**Bottom line:** Probabilities vary by size
+
+---
+
+## Two-Stage Weights
+
+### Weight = 1 / (P₁ × P₂)
+
+Where:
+- P₁ = PSU selection probability
+- P₂ = Household selection probability
+
+**Bottom line:** Inverse of selection probability
+
+---
+
+## Stage 1 Weights
+
+```{r stage1_weights}
+# PSU selection probability and weight
+selected_frame$psu_weight <- 1 / selected_frame$select_prob
+
+# Check weights
+summary(selected_frame$psu_weight)
+```
+
+**Bottom line:** Smaller PSUs get larger weights
+
+---
+
+## Stage 2 Selection
+
+```{r stage2_selection}
+# Select households within PSUs
+n_hh_per_psu <- 25
+
+# Example PSU with 600 households
+psu_size <- 600
+hh_prob <- n_hh_per_psu / psu_size
+
+c(PSU_Size = psu_size,
+  Sample_HH = n_hh_per_psu,
+  HH_Probability = round(hh_prob, 4))
+```
+
+**Bottom line:** 25 from 600 = 4.17% chance
+
+---
+
+## Combined Weight
+
+```{r combined_weight}
+# Example calculation
+psu_prob <- 0.025  # From PPS
+hh_prob <- 25/600  # Within PSU
+
+final_weight <- 1 / (psu_prob * hh_prob)
+
+c(PSU_Prob = psu_prob,
+  HH_Prob = round(hh_prob, 4),
+  Combined_Prob = round(psu_prob * hh_prob, 5),
+  Final_Weight = round(final_weight, 0))
+```
+
+**Bottom line:** Weight = 960 for this household
+
+---
+
+## Self-Weighting Design
+
+### Special case: Equal weights
+
+Achieved when:
+$$n_h \propto \frac{N_h}{M_h}$$
+
+- Sample PSUs ∝ to size
+- Fixed households per PSU
+- Results in equal weights
+
+**Bottom line:** Simplifies analysis
+
+---
+
+## Self-Weighting Example
+
+```{r self_weighting}
+# For self-weighting:
+# n × M_i / N = constant
+
+N_total <- 100000  # Total households
+n_psu <- 50        # PSUs to select
+m <- 20            # HH per PSU
+
+# Each household weight
+overall_weight <- N_total / (n_psu * m)
+
+c(Population = N_total,
+  Sample_Size = n_psu * m,
+  Weight_All_HH = overall_weight)
+```
+
+**Bottom line:** All weights = 100
+
+---
+
+## Exercise: Calculate Weights
+
+### Your turn (3 minutes):
+
+```{r exercise_weights}
+# Given:
+psu_size <- 800
+total_psus <- 200
+selected_psus <- 30
+hh_in_psu <- 20
+
+# Calculate weight
+psu_prob <- selected_psus / total_psus
+hh_prob <- hh_in_psu / psu_size
+weight <- 1 / (psu_prob * hh_prob)
+
+c(Weight = round(weight, 0))
+```
+
+**Bottom line:** Practice builds intuition
+
+---
+
+## Weight Distribution
+
+```{r weight_dist, fig.height=3.5}
+# Simulate weight distribution
+set.seed(2024)
+weights <- 1 / (runif(500, 0.001, 0.01))
+
+data.frame(weight = weights) %>%
+  ggplot(aes(x = weight)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Typical Weight Distribution",
+       x = "Weight", y = "Count")
+```
+
+**Bottom line:** Weights often skewed
+
+---
+
+## Weight Problems
+
+### Watch for:
+
+- Extreme weights (>5× mean)
+- Zero weights
+- Negative weights (error!)
+- High CV of weights
+
+**Bottom line:** Check weights always
+
+---
+
+## Unequal Probability Effects
+
+```{r unequal_prob_effects}
+# Compare equal vs unequal probability
+scenarios <- data.frame(
+  Design = c("Equal Prob", "PPS"),
+  Weight_Range = c("All same", "50-500"),
+  CV_Weights = c(0, 0.8),
+  DEFF_Weights = c(1.0, 1.64)
+)
+
+kable(scenarios) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Unequal weights increase variance
+
+---
+
+## Variance Estimation
+
+### For two-stage PPS:
+
+More complex than SRS:
+- Between PSU variance
+- Within PSU variance  
+- Finite population corrections
+- Unequal probabilities
+
+**Bottom line:** Use software!
+
+---
+
+## Ultimate Cluster Method
+
+```{r ultimate_cluster}
+# Simplified variance estimation
+# Treat PSU totals as observations
+
+cat("V(ȳ) ≈ (1-f₁) × s²ᵤ / n_psu
+
+Where:
+- f₁ = PSU sampling fraction
+- s²ᵤ = variance of PSU totals
+- n_psu = number of PSUs")
+```
+
+**Bottom line:** PSU level variation dominates
+
+---
+
+## Variance Components
+
+```{r var_components_2stage}
+# Typical variance decomposition
+var_breakdown <- data.frame(
+  Component = c("Between PSU", "Within PSU", "Total"),
+  Percent = c(70, 30, 100)
+)
+
+kable(var_breakdown) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Most variance from PSU level
+
+---
+
+## Survey Package Setup
+
+```{r survey_setup}
+# Specify two-stage design
+cat("library(survey)
+
+design <- svydesign(
+  ids = ~ psu_id + household_id,
+  strata = ~ stratum,
+  weights = ~ final_weight,
+  data = survey_data
+)
+
+# Handles all complexity!")
+```
+
+**Bottom line:** Software does heavy lifting
+
+---
+
+## Energy Break
+
+### Quick stretch (30 seconds):
+
+1. Stand and reach up
+2. Roll shoulders back
+3. Deep breath
+4. Sit refreshed
+
+Think about:
+"PPS makes sense because..."
+
+**Bottom line:** Movement helps learning
+
+---
+
+## PPS Advantages
+
+### Why use PPS:
+
+✓ Handles size variation  
+✓ Can achieve self-weighting  
+✓ More representative  
+✓ Standard internationally  
+
+**Bottom line:** PPS is best practice
+
+---
+
+## PPS Disadvantages
+
+### Challenges:
+
+✗ More complex  
+✗ Needs size measures  
+✗ Updating frame harder  
+✗ Training required  
+
+**Bottom line:** Complexity worth it
+
+---
+
+## Size Measures
+
+```{r size_measures}
+# Common size measures
+measures <- data.frame(
+  Type = c("Households", "Population", "Employees", 
+          "Area", "Previous survey"),
+  When_Used = c("Household surveys", "Health surveys",
+               "Business surveys", "Agricultural",
+               "Panel surveys")
+)
+
+kable(measures) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Choose relevant measure
+
+---
+
+## Updating Size Measures
+
+### Size measures get outdated:
+
+- Census every 10 years
+- Growth varies by area
+- New developments
+- Migration
+
+Solution: Growth models
+
+**Bottom line:** Plan for updates
+
+---
+
+## Growth Adjustment
+
+```{r growth_adjustment}
+# Adjust for growth
+original_size <- 500
+years_passed <- 5
+growth_rate <- 0.02
+
+current_size <- original_size * (1 + growth_rate)^years_passed
+
+c(Original = original_size,
+  Current = round(current_size),
+  Increase = paste0(round((current_size/original_size - 1) * 100, 1), "%"))
+```
+
+**Bottom line:** 10.4% growth over 5 years
+
+---
+
+## Implicit Stratification
+
+### Clever PPS trick:
+
+1. Sort frame by key variables
+2. Apply systematic PPS
+3. Achieves implicit stratification
+
+**Bottom line:** Free stratification gains
+
+---
+
+## Implicit Strat Example
+
+```{r implicit_strat}
+# Sort before selection
+frame_sorted <- data.frame(
+  psu = 1:12,
+  region = rep(c("North", "South", "East"), each = 4),
+  size = c(100, 200, 150, 180,
+          300, 250, 280, 320,
+          200, 180, 220, 210)
+)
+
+# First 6 rows
+head(frame_sorted) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Sorted by region first
+
+---
+
+## Systematic Selection Result
+
+```{r implicit_result}
+# Select 3 with systematic PPS
+# One from each region guaranteed!
+
+selected_implicit <- c(2, 6, 10)  # Example
+
+frame_sorted$selected <- frame_sorted$psu %in% selected_implicit
+
+table(frame_sorted$region[frame_sorted$selected])
+```
+
+**Bottom line:** One per region automatically
+
+---
+
+## Minimum PSU Size
+
+### Practical consideration:
+
+Very small PSUs problematic:
+- High weights
+- Fieldwork inefficient
+- May be exhausted
+
+Solution: Combine small PSUs
+
+**Bottom line:** Set minimum size
+
+---
+
+## Combining Small PSUs
+
+```{r combine_psus}
+# Combine PSUs < 100 households
+min_size <- 100
+
+small_psus <- data.frame(
+  PSU = c("A", "B", "C"),
+  Size = c(40, 60, 35)
+)
+
+# Combine A and C
+combined <- data.frame(
+  PSU = c("A+C", "B"),
+  Size = c(75, 60)
+)
+
+kable(combined) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Combine geographically close PSUs
+
+---
+
+## Certainty PSUs
+
+### Very large PSUs:
+
+If selection probability > 1:
+→ Include with certainty
+→ Sample more within
+→ Treat as stratum
+
+**Bottom line:** Large PSUs always in
+
+---
+
+## Certainty Example
+
+```{r certainty_psu}
+# PSU with 5000 households
+# Selecting 20 PSUs from 200 total
+huge_psu_size <- 5000
+total_size <- 50000
+n_psu <- 20
+
+prob <- n_psu * (huge_psu_size / total_size)
+
+c(Size = huge_psu_size,
+  Selection_Prob = prob,
+  Status = ifelse(prob >= 1, "Certainty", "Sample"))
+```
+
+**Bottom line:** Include with probability 1
+
+---
+
+## Replacement PSUs
+
+### Plan for non-response:
+
+For each selected PSU:
+- Identify replacement
+- Similar characteristics
+- Document procedure
+
+**Bottom line:** Prepare for problems
+
+---
+
+## Documentation Template
+
+```{r documentation}
+# What to document
+cat("PSU Selection Documentation:
+
+1. Frame source and date
+2. Size measure used
+3. Selection method (PPS/SRS)
+4. Stratification (explicit/implicit)
+5. Number selected
+6. Certainty PSUs
+7. Replacements
+8. Selection probabilities
+9. Random seed used")
+```
+
+**Bottom line:** Document everything
+
+---
+
+## Real Example: MICS
+
+```{r mics_example}
+# Multiple Indicator Cluster Survey
+mics <- data.frame(
+  Parameter = c("PSUs", "HH per PSU", "Method",
+               "Size measure", "Typical DEFF"),
+  Value = c("400-600", "20-25", "PPS",
+           "Census households", "1.5-2.5")
+)
+
+kable(mics) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Standard UNICEF design
+
+---
+
+## Country Example
+
+```{r country_example}
+# Typical national survey
+national <- data.frame(
+  Stage = c("Stage 1", "Stage 2"),
+  Frame = c("Census EAs", "Household listing"),
+  Selection = c("PPS (size)", "Systematic"),
+  Number = c("500 EAs", "25 HH/EA"),
+  Total = c("500", "12,500")
+)
+
+kable(national) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Two-stage PPS standard
+
+---
+
+## Quality Checks
+
+### Verify PPS selection:
+
+☐ Probabilities sum to 1  
+☐ All PSUs have positive probability  
+☐ Selected match expected  
+☐ No duplicates (if without replacement)  
+☐ Geographic spread reasonable  
+
+**Bottom line:** Always verify
+
+---
+
+## Common Mistakes
+
+### Avoid these:
+
+❌ Using outdated sizes  
+❌ Not documenting selection  
+❌ Ignoring certainty PSUs  
+❌ Wrong probability calculation  
+❌ No replacement PSUs  
+
+**Bottom line:** Learn from others
+
+---
+
+## Your Practice
+
+### Exercise: PPS selection
+
+```{r practice_pps}
+# Small frame
+practice <- data.frame(
+  PSU = LETTERS[1:5],
+  Size = c(200, 500, 300, 400, 100)
+)
+
+# Select 2 PSUs
+# Calculate probabilities
+practice$prob <- practice$Size / sum(practice$Size)
+
+# Your turn: which selected with start = 0.2?
+```
+
+**Bottom line:** Apply concepts
+
+---
+
+## Practice Solution
+
+```{r practice_solution}
+practice$cum_prob <- cumsum(practice$prob)
+interval <- 0.5  # For n=2
+start <- 0.2
+selections <- c(0.2, 0.7)
+
+selected <- sapply(selections, function(x) {
+  practice$PSU[which(practice$cum_prob >= x)[1]]
+})
+
+selected
+```
+
+**Bottom line:** PSUs B and D selected
+
+---
+
+## Group Discussion
+
+### Discuss (2 minutes):
+
+1. Do you use PPS in your surveys?
+2. What size measure do you use?
+3. Any challenges faced?
+
+Share insights!
+
+**Bottom line:** Learn from experience
+
+---
+
+## Advanced: Stratified PPS
+
+```{r stratified_pps}
+# PPS within strata
+strat_frame <- data.frame(
+  Stratum = c("Urban", "Urban", "Rural", "Rural"),
+  PSU = c("U1", "U2", "R1", "R2"),
+  Size = c(800, 1200, 400, 300)
+)
+
+# Select 1 from each stratum
+kable(strat_frame) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Combine stratification with PPS
+
+---
+
+## Software Implementation
+
+```{r software_impl}
+# R sampling package
+cat("library(sampling)
+
+# PPS selection
+s <- cluster(
+  data = psu_frame,
+  clustername = 'psu_id',
+  size = n_psu,
+  method = 'systematic',
+  pik = psu_frame$size
+)")
+```
+
+**Bottom line:** Packages simplify PPS
+
+---
+
+## Part 2 Summary
+
+### You've mastered:
+
+✅ PPS concept and calculation  
+✅ Systematic PPS selection  
+✅ Two-stage weight calculation  
+✅ Self-weighting designs  
+✅ Practical considerations  
+
+**Bottom line:** PPS skills acquired!
+
+---
+
+## Key Formulas
+
+```{r key_formulas}
+formulas <- data.frame(
+  Concept = c("PPS Probability", "Two-stage weight", 
+             "Self-weighting"),
+  Formula = c("π_i = n × M_i / M",
+             "w = 1/(π_1 × π_2)",
+             "n_i ∝ M_i / m_i")
+)
+
+kable(formulas) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Remember these formulas
+
+---
+
+## Quick Quiz
+
+### Test yourself:
+
+1. PPS stands for _______
+2. Larger PSUs get _______ probability
+3. Weight = 1 / _______
+4. Self-weighting means _______
+
+**Bottom line:** Check your understanding
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### When we return:
+- Optimization strategies
+- Complex examples
+- Software practice
+
+### Reflection:
+How would PPS improve your surveys?
+
+**Bottom line:** Rest and reflect
+
+---
+
+class: center, middle, inverse
+
+# End of Part 2
+
+## Slides 76-150 Complete
+
+### Next: Part 3 - Optimization
+
+---
+
+---
+
+## Welcome to Part 3!
+
+### Optimization & Variance
+
+Topics for next 75 slides:
+- Optimal cluster sizes
+- Cost optimization
+- Variance estimation
+- Stratified clustering
+- Real applications
+
+**Bottom line:** Advanced techniques ahead
+
+---
+
+## The Optimization Problem
+
+### Balance three factors:
+
+1. **Cost** - minimize
+2. **Variance** - minimize  
+3. **Operational** - feasible
+
+Can't optimize all simultaneously!
+
+**Bottom line:** Trade-offs inevitable
+
+---
+
+## Cost Function
+
+### Two-stage cost model:
+
+$$C = c_0 + c_1 \times n_{psu} + c_2 \times n_{psu} \times \bar{m}$$
+
+Where:
+- $c_0$ = fixed cost
+- $c_1$ = cost per PSU
+- $c_2$ = cost per household
+
+**Bottom line:** PSU costs dominate
+
+---
+
+## Typical Cost Structure
+
+```{r cost_structure_detail}
+costs <- data.frame(
+  Component = c("Fixed", "Per PSU", "Per HH"),
+  Amount = c(50000, 1000, 50),
+  Example = c("Training, setup", 
+             "Travel, listing",
+             "Interview time")
+)
+
+kable(costs) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** PSU costs 20× household costs
+
+---
+
+## Variance Function
+
+### For cluster sampling:
+
+$$V(\bar{y}) = \frac{1}{n}[S^2_b + \frac{S^2_w}{m}]$$
+
+- $S^2_b$ = between-cluster variance
+- $S^2_w$ = within-cluster variance
+- $m$ = cluster size
+
+**Bottom line:** Two variance components
+
+---
+
+## Optimal Cluster Size
+
+### The magic formula:
+
+$$m_{opt} = \sqrt{\frac{c_1(1-\rho)}{c_2 \rho}}$$
+
+Where:
+- $c_1$ = cost per PSU
+- $c_2$ = cost per unit
+- $\rho$ = ICC
+
+**Bottom line:** Balances cost and correlation
+
+---
+
+## Calculate Optimal Size
+
+```{r optimal_size_calc}
+# Given parameters
+c1 <- 1000  # Cost per PSU
+c2 <- 50    # Cost per household
+rho <- 0.05 # ICC
+
+m_opt <- sqrt(c1 * (1 - rho) / (c2 * rho))
+
+c(Optimal_Size = round(m_opt),
+  Say_Use = 20)  # Practical choice
+```
+
+**Bottom line:** Theory says 20, practice agrees
+
+---
+
+## Sensitivity Analysis
+
+```{r sensitivity_m_opt, fig.height=3.5}
+# How optimal size changes with ICC
+rho_range <- seq(0.01, 0.20, 0.01)
+m_opt_range <- sqrt(1000 * (1 - rho_range) / (50 * rho_range))
+
+data.frame(ICC = rho_range, Optimal_m = m_opt_range) %>%
+  ggplot(aes(x = ICC, y = Optimal_m)) +
+  geom_line(size = 1.5, color = "blue") +
+  theme_minimal() +
+  labs(y = "Optimal Cluster Size",
+       title = "Optimal Size Decreases with ICC")
+```
+
+**Bottom line:** Higher ICC → smaller clusters
+
+---
+
+## Cost Ratio Effect
+
+```{r cost_ratio, fig.height=3.5}
+# Effect of cost ratio
+c1_c2_ratio <- seq(5, 50, 5)
+m_opt_ratio <- sqrt(c1_c2_ratio * (1 - 0.05) / 0.05)
+
+data.frame(Ratio = c1_c2_ratio, Optimal_m = m_opt_ratio) %>%
+  ggplot(aes(x = Ratio, y = Optimal_m)) +
+  geom_line(size = 1.5, color = "red") +
+  theme_minimal() +
+  labs(x = "Cost Ratio (c1/c2)",
+       y = "Optimal Cluster Size")
+```
+
+**Bottom line:** Higher PSU cost → larger clusters
+
+---
+
+## Total Sample Size
+
+### Given budget B:
+
+```{r total_sample}
+# With budget constraint
+budget <- 100000
+c0 <- 20000
+c1 <- 1000
+c2 <- 50
+m <- 20  # Cluster size
+
+# How many PSUs possible?
+n_psu <- (budget - c0) / (c1 + c2 * m)
+total_n <- floor(n_psu) * m
+
+c(PSUs = floor(n_psu),
+  Total_Sample = total_n)
+```
+
+**Bottom line:** Budget → 40 PSUs × 20 = 800 total
+
+---
+
+## Efficiency Comparison
+
+```{r efficiency_comp}
+# Compare different designs
+designs <- data.frame(
+  Design = c("SRS", "Cluster(10)", "Cluster(20)", "Cluster(30)"),
+  Cost = c(50000, 30000, 40000, 45000),
+  n_eff = c(500, 400, 350, 300),
+  Efficiency = c(100, 80, 70, 60)
+)
+
+kable(designs) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Larger clusters less efficient
+
+---
+
+## Optimal Allocation
+
+### For stratified cluster:
+
+1. Allocate PSUs to strata
+2. Determine cluster size
+3. Consider costs by stratum
+
+**Bottom line:** Two-level optimization
+
+---
+
+## Stratum Allocation
+
+```{r stratum_alloc_cluster}
+# Allocate PSUs across strata
+strata <- data.frame(
+  Stratum = c("Urban", "Rural"),
+  N_psu = c(200, 300),
+  S_b = c(5000, 3000),
+  Cost = c(800, 1200)
+)
+
+# Optimal allocation
+strata$alloc_factor <- strata$N_psu * strata$S_b / sqrt(strata$Cost)
+strata$n_psu <- round(40 * strata$alloc_factor / sum(strata$alloc_factor))
+
+kable(strata[, c("Stratum", "n_psu")]) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** 24 urban, 16 rural PSUs
+
+---
+
+## Within-Stratum Optimization
+
+```{r within_stratum}
+# Different optimal sizes by stratum
+strata_opt <- data.frame(
+  Stratum = c("Urban", "Rural"),
+  c1 = c(800, 1200),
+  c2 = c(40, 60),
+  rho = c(0.03, 0.08),
+  m_opt = c(23, 19)
+)
+
+kable(strata_opt) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Urban clusters can be larger
+
+---
+
+## Variance Estimation Methods
+
+### Three approaches:
+
+1. **Taylor linearization**
+2. **Jackknife**
+3. **Bootstrap**
+
+**Bottom line:** All handle clustering
+
+---
+
+## Taylor Linearization
+
+### Most common method:
+
+- Uses calculus approximation
+- Built into survey packages
+- Fast computation
+- Good for means, totals
+
+**Bottom line:** Default choice
+
+---
+
+## Ultimate Cluster
+
+### Simplified approach:
+
+```{r ultimate_cluster_var}
+# Treat PSU totals as data
+cat("Steps:
+1. Calculate PSU totals
+2. Compute variance of totals
+3. Apply finite population correction
+
+V(ȳ) = (1-f) × s²ᵤ / n_psu")
+```
+
+**Bottom line:** PSU level analysis
+
+---
+
+## Ultimate Cluster Example
+
+```{r uc_example}
+# Mock PSU totals
+set.seed(2024)
+psu_totals <- rnorm(30, mean = 50000, sd = 8000)
+
+# Variance estimate
+var_uc <- var(psu_totals) / 30
+se_uc <- sqrt(var_uc)
+
+c(Mean = round(mean(psu_totals)),
+  SE = round(se_uc),
+  CV = round(se_uc / mean(psu_totals) * 100, 1))
+```
+
+**Bottom line:** Simple but effective
+
+---
+
+## Jackknife Method
+
+```{r jackknife_concept}
+# Leave-one-out approach
+cat("Jackknife steps:
+1. Remove PSU i
+2. Recalculate estimate
+3. Repeat for all PSUs
+4. Compute variance from deviations
+
+Handles complex statistics well")
+```
+
+**Bottom line:** Robust variance estimation
+
+---
+
+## Jackknife Example
+
+```{r jackknife_demo}
+# Demonstration with 5 PSUs
+psu_means <- c(45, 52, 48, 51, 49)
+overall <- mean(psu_means)
+
+# Leave each out
+jack_est <- numeric(5)
+for(i in 1:5) {
+  jack_est[i] <- mean(psu_means[-i])
+}
+
+# Variance
+var_jack <- 4/5 * sum((jack_est - overall)^2)
+
+c(SE_Jackknife = round(sqrt(var_jack), 2))
+```
+
+**Bottom line:** Captures uncertainty
+
+---
+
+## Bootstrap for Clusters
+
+```{r bootstrap_cluster}
+# Resample PSUs with replacement
+set.seed(2024)
+n_boot <- 100
+boot_means <- numeric(n_boot)
+
+# Simulate
+psu_data <- rnorm(30, 50, 10)
+for(i in 1:n_boot) {
+  boot_sample <- sample(psu_data, replace = TRUE)
+  boot_means[i] <- mean(boot_sample)
+}
+
+c(SE_Bootstrap = round(sd(boot_means), 2))
+```
+
+**Bottom line:** Flexible approach
+
+---
+
+## Comparing Methods
+
+```{r compare_var_methods}
+methods <- data.frame(
+  Method = c("Taylor", "Jackknife", "Bootstrap"),
+  Speed = c("Fast", "Medium", "Slow"),
+  Complex_Stats = c("Limited", "Good", "Excellent"),
+  Software = c("All", "Most", "Most")
+)
+
+kable(methods) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Taylor for simple, bootstrap for complex
+
+---
+
+## Design Effect Decomposition
+
+```{r deff_decomp}
+# DEFF has components
+deff_components <- data.frame(
+  Component = c("Clustering", "Weights", "Stratification", "Total"),
+  DEFF = c(2.0, 1.3, 0.8, 2.08)
+)
+
+kable(deff_components) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Multiple effects combine
+
+---
+
+## Effective Sample Size
+
+```{r neff_calculation}
+# Real vs effective
+n_actual <- 1200
+deff_total <- 2.08
+
+n_eff <- n_actual / deff_total
+
+data.frame(
+  Measure = c("Actual n", "DEFF", "Effective n", "Efficiency"),
+  Value = c(n_actual, deff_total, 
+           round(n_eff), 
+           paste0(round(n_eff/n_actual * 100), "%"))
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** 1200 clustered = 577 independent
+
+---
+
+## Energy Check
+
+### Quick revival (30 seconds):
+
+1. Stand and stretch arms
+2. Roll head gently
+3. Three deep breaths
+4. Sit ready to continue
+
+Question: "What surprised you about optimization?"
+
+**Bottom line:** Stay engaged
+
+---
+
+## Stratified Cluster Design
+
+### Combines both approaches:
+
+1. **Stratify** by region/type
+2. **Cluster** within strata
+3. **PPS** for PSU selection
+4. **SRS** within PSUs
+
+**Bottom line:** Maximum control
+
+---
+
+## Stratified Cluster Example
+
+```{r strat_cluster_ex}
+# National survey design
+design_params <- data.frame(
+  Stratum = c("Urban", "Rural", "Remote"),
+  PSUs = c(150, 200, 50),
+  HH_per_PSU = c(25, 20, 15),
+  Total_HH = c(3750, 4000, 750)
+)
+
+kable(design_params) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** 8,500 households total
+
+---
+
+## Allocation Trade-offs
+
+```{r allocation_tradeoff, fig.height=3.5}
+# PSUs vs cluster size for fixed budget
+n_psu_range <- seq(20, 100, 10)
+m_range <- 2000 / n_psu_range  # Fixed total = 2000
+
+data.frame(n_PSU = n_psu_range, m = m_range) %>%
+  ggplot(aes(x = n_PSU, y = m)) +
+  geom_line(size = 1.5, color = "purple") +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(x = "Number of PSUs", y = "Cluster Size",
+       title = "Trade-off: More PSUs or Larger Clusters?")
+```
+
+**Bottom line:** Inverse relationship
+
+---
+
+## Optimal Balance
+
+```{r optimal_balance}
+# Find best combination
+rho <- 0.05
+c1 <- 1000
+c2 <- 50
+budget <- 100000
+
+# Optimal
+m_opt <- round(sqrt(c1 * (1 - rho) / (c2 * rho)))
+n_psu_opt <- (budget - 20000) / (c1 + c2 * m_opt)
+
+c(Optimal_m = m_opt,
+  Optimal_PSUs = round(n_psu_opt),
+  Total_Sample = round(n_psu_opt) * m_opt)
+```
+
+**Bottom line:** 40 PSUs × 20 = 800 optimal
+
+---
+
+## Domain Considerations
+
+```{r domain_cluster}
+# Ensure domain sample sizes
+domains <- data.frame(
+  Domain = c("Province A", "Province B", "Province C"),
+  Population_Pct = c(0.5, 0.3, 0.2),
+  Expected_n = c(400, 240, 160),
+  Min_Required = c(200, 200, 200)
+)
+
+domains$Adequate <- domains$Expected_n >= domains$Min_Required
+
+kable(domains) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Province C needs boost
+
+---
+
+## Adjusting for Domains
+
+```{r adjust_domains}
+# Increase sample for small domain
+original_n <- 800
+boost_factor <- 200 / 160  # For Province C
+
+adjusted_n <- ceiling(original_n * boost_factor)
+
+c(Original = original_n,
+  Adjusted = adjusted_n,
+  Increase = paste0("+", adjusted_n - original_n))
+```
+
+**Bottom line:** Need 1000 for domains
+
+---
+
+## Non-Response Planning
+
+```{r nonresponse_cluster}
+# Higher non-response in clusters
+response_scenarios <- data.frame(
+  Level = c("PSU", "Household", "Combined"),
+  Expected_RR = c(0.95, 0.85, 0.81),
+  Oversample = c("5%", "18%", "24%")
+)
+
+kable(response_scenarios) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Plan for 25% oversample
+
+---
+
+## Replacement Strategy
+
+```{r replacement_strategy}
+# PSU replacement rules
+cat("Replacement PSU Selection:
+
+1. Same stratum
+2. Similar size (±20%)
+3. Geographic proximity
+4. Not already selected
+5. Document reason for replacement")
+```
+
+**Bottom line:** Have backup plan
+
+---
+
+## Quality Metrics
+
+```{r quality_metrics_cluster}
+# Key quality indicators
+metrics <- data.frame(
+  Metric = c("ICC", "DEFF", "CV of weights", "Response rate"),
+  Target = c("< 0.10", "< 2.5", "< 0.5", "> 80%"),
+  Actual = c("0.08", "2.2", "0.45", "82%"),
+  Status = c("✓", "✓", "✓", "✓")
+)
+
+kable(metrics) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** All targets met
+
+---
+
+## Software Implementation
+
+```{r software_cluster}
+cat("# R implementation
+library(survey)
+
+# Define complex design
+design <- svydesign(
+  ids = ~ psu_id + hh_id,
+  strata = ~ stratum,
+  weights = ~ final_weight,
+  fpc = ~ fpc1 + fpc2,
+  data = survey_data
+)
+
+# Get estimates with proper variance
+svymean(~ income, design)")
+```
+
+**Bottom line:** Software handles complexity
+
+---
+
+## Stata Implementation
+
+```{r stata_cluster}
+cat("* Stata implementation
+svyset psu_id [pw=final_weight], ///
+  strata(stratum) fpc(fpc1) || ///
+  hh_id, fpc(fpc2)
+  
+* Estimation
+svy: mean income")
+```
+
+**Bottom line:** Similar in Stata
+
+---
+
+## Common Software Errors
+
+```{r software_errors}
+errors <- data.frame(
+  Error = c("Singular matrix", "Lonely PSU", 
+           "Missing weights"),
+  Cause = c("Only 1 PSU in stratum", 
+           "PSU alone after missing",
+           "Weight calculation error"),
+  Fix = c("Combine strata", "Options(lonely.psu)",
+         "Check weight formula")
+)
+
+kable(errors) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Know common issues
+
+---
+
+## Real Data Exercise
+
+### Your turn (5 minutes):
+
+```{r exercise_optimal}
+# Calculate optimal design
+# Given:
+budget <- 150000
+fixed_cost <- 30000
+cost_per_psu <- 1500
+cost_per_hh <- 40
+icc <- 0.06
+
+# Calculate optimal m
+# Then number of PSUs
+# Then total sample
+
+# Start here...
+```
+
+**Bottom line:** Apply the formulas
+
+---
+
+## Exercise Solution
+
+```{r exercise_solution_opt}
+# Solution
+budget <- 150000
+c0 <- 30000
+c1 <- 1500
+c2 <- 40
+rho <- 0.06
+
+# Optimal cluster size
+m_opt <- sqrt(c1 * (1 - rho) / (c2 * rho))
+m_use <- round(m_opt)
+
+# Number of PSUs
+available <- budget - c0
+n_psu <- floor(available / (c1 + c2 * m_use))
+
+# Total sample
+total <- n_psu * m_use
+
+c(m_optimal = m_use,
+  n_PSUs = n_psu,
+  Total_n = total)
+```
+
+**Bottom line:** 50 PSUs × 18 = 900 total
+
+---
+
+## Simulation Study
+
+```{r simulation_cluster, fig.height=3.5}
+# Compare designs via simulation
+set.seed(2024)
+designs <- data.frame(
+  Design = c("SRS", "Cluster(15)", "Cluster(25)", "Cluster(40)"),
+  SE = c(100, 130, 150, 180) + rnorm(4, 0, 5)
+)
+
+ggplot(designs, aes(x = Design, y = SE)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(y = "Standard Error",
+       title = "SE Increases with Cluster Size")
+```
+
+**Bottom line:** Larger clusters → higher SE
+
+---
+
+## Multi-Stage Extensions
+
+```{r multi_stage}
+# Three-stage design
+stages <- data.frame(
+  Stage = c("1: Region", "2: PSU", "3: Household"),
+  Units = c("5", "100", "2000"),
+  Method = c("All", "PPS", "SRS")
+)
+
+kable(stages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Can extend to more stages
+
+---
+
+## Three-Stage Weights
+
+```{r three_stage_weights}
+# Weight calculation
+p1 <- 5/5      # All regions
+p2 <- 20/200   # PSUs in region  
+p3 <- 20/500   # HH in PSU
+
+weight <- 1 / (p1 * p2 * p3)
+
+c(Stage1_Prob = p1,
+  Stage2_Prob = p2,
+  Stage3_Prob = p3,
+  Final_Weight = weight)
+```
+
+**Bottom line:** Multiply all probabilities
+
+---
+
+## Adaptive Cluster Sampling
+
+### Modern approach:
+
+- Start with initial sample
+- If "rare" unit found → sample neighbors
+- Continues adaptively
+- Good for rare populations
+
+**Bottom line:** Flexible for special cases
+
+---
+
+## Network Sampling
+
+```{r network_sampling}
+# For hidden populations
+network_params <- data.frame(
+  Wave = c(0, 1, 2, 3),
+  Seeds = c(10, 0, 0, 0),
+  Referrals = c(0, 30, 60, 90),
+  Cumulative = c(10, 40, 100, 190)
+)
+
+kable(network_params) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Reaches hidden groups
+
+---
+
+## Responsive Design
+
+### Adjust during collection:
+
+Monitor → Analyze → Adapt
+
+- Change cluster sizes
+- Adjust incentives
+- Modify protocols
+
+**Bottom line:** Real-time optimization
+
+---
+
+## Case Study: DHS
+
+```{r dhs_case}
+# Demographic Health Survey
+dhs <- data.frame(
+  Country = c("Kenya", "Nigeria", "Ethiopia"),
+  PSUs = c(400, 600, 450),
+  HH_per_PSU = c(30, 25, 28),
+  Total = c(12000, 15000, 12600),
+  DEFF = c(2.1, 2.3, 2.2)
+)
+
+kable(dhs) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Standard design works globally
+
+---
+
+## Case Study: LSMS
+
+```{r lsms_case}
+# Living Standards Measurement
+lsms <- data.frame(
+  Component = c("PSUs", "Panel", "Waves", "Topics"),
+  Detail = c("200-300", "Yes", "3-4", "Comprehensive")
+)
+
+kable(lsms) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Complex but valuable
+
+---
+
+## Practical Tips
+
+### From experience:
+
+1. **Start simple** - complicate gradually
+2. **Document everything** - future you needs it
+3. **Check weights** - always
+4. **Monitor quality** - continuously
+5. **Have backups** - PSUs will fail
+
+**Bottom line:** Experience teaches
+
+---
+
+## Common Pitfalls
+
+### Avoid these:
+
+❌ Ignoring ICC in planning  
+❌ Too few PSUs (< 30)  
+❌ Extreme cluster sizes  
+❌ No replacement PSUs  
+❌ Wrong variance formula  
+
+**Bottom line:** Learn from mistakes
+
+---
+
+## Decision Tree
+
+```{r decision_tree}
+cat("Cluster Sampling Decision:
+
+Population clustered? → Yes → Continue
+                    ↓
+                    No → Use SRS/Stratified
+
+Complete frame? → No → Must cluster
+              ↓
+              Yes → Consider costs
+
+High travel costs? → Yes → Cluster
+                 ↓
+                 No → Maybe SRS")
+```
+
+**Bottom line:** Logic guides choice
+
+---
+
+## Group Exercise
+
+### Discuss (3 minutes):
+
+Design a survey for your country:
+- 10,000 household sample
+- Provincial estimates needed
+- Budget: $500,000
+- Timeline: 3 months
+
+What's your design?
+
+**Bottom line:** Apply knowledge
+
+---
+
+## Innovation Corner
+
+### Emerging approaches:
+
+- **GPS-based sampling**
+- **Satellite imagery frames**
+- **Mobile phone surveys**
+- **Hybrid designs**
+
+**Bottom line:** Field evolving
+
+---
+
+## Climate Considerations
+
+```{r climate_cluster}
+# Environmental impact
+impact <- data.frame(
+  Design = c("SRS", "Clustered"),
+  Travel_km = c(50000, 15000),
+  CO2_tons = c(5.0, 1.5),
+  Reduction = c("0%", "70%")
+)
+
+kable(impact) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Clustering greener
+
+---
+
+## Part 3 Summary
+
+### You've learned:
+
+✅ Optimal cluster sizes  
+✅ Cost-variance trade-offs  
+✅ Advanced variance estimation  
+✅ Complex design handling  
+✅ Real-world applications  
+
+**Bottom line:** Optimization mastered!
+
+---
+
+## Key Takeaways
+
+```{r key_takeaways}
+takeaways <- data.frame(
+  Number = 1:5,
+  Lesson = c("Optimize cluster size for cost/variance",
+            "Use appropriate variance method",
+            "Plan for non-response",
+            "Document thoroughly",
+            "Software handles complexity")
+)
+
+kable(takeaways) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Core lessons to remember
+
+---
+
+## Quick Review
+
+### Fill in blanks:
+
+1. Optimal m = √[___________]
+2. DEFF = 1 + _______
+3. Ultimate cluster uses _______ totals
+4. Higher ICC → _______ clusters
+
+**Bottom line:** Test your knowledge
+
+---
+
+## Break Announcement
+
+## ☕ 15-Minute Break
+
+### Coming in Part 4:
+- Complex case studies
+- Software workshop
+- Troubleshooting
+
+### Challenge:
+Calculate DEFF for your last survey
+
+**Bottom line:** Rest and return!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 3
+
+## Slides 151-225 Complete
+
+### Next: Part 4 - Advanced Applications
+
+---
+
+---
+
+## Welcome to Part 4!
+
+### Advanced Applications & Practice
+
+Topics for this section:
+- Complex case studies
+- Software workshop
+- Field challenges
+- Quality assurance
+- Practical exercises
+
+**Bottom line:** Real-world application focus
+
+---
+
+## Case Study: National Health Survey
+
+```{r health_survey_design}
+# Real national health survey design
+health_design <- data.frame(
+  Parameter = c("Target Population", "Sample Size", "PSUs", 
+                "Stratification", "Stages", "Domains"),
+  Value = c("15M adults", "15,000", "600 EAs",
+            "Province × Urban/Rural", "2", "12 provinces")
+)
+
+kable(health_design) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Large-scale implementation
+
+---
+
+## Design Decisions
+
+```{r design_decisions}
+# Key decisions made
+decisions <- data.frame(
+  Decision = c("PSU Definition", "Selection Method", 
+               "Cluster Size", "Replacement"),
+  Choice = c("Census EAs", "PPS Systematic", 
+             "25 households", "2 per PSU"),
+  Rationale = c("Available frame", "Size variation",
+                "Cost-variance balance", "Non-response")
+)
+
+kable(decisions) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Each choice has reasons
+
+---
+
+## Sampling Frame Preparation
+
+```{r frame_prep}
+# Frame preparation steps
+cat("Frame Preparation Process:
+
+1. Obtain census EA list
+2. Update population counts
+3. Merge/split small/large EAs
+4. Assign to strata
+5. Calculate size measures
+6. Sort for implicit stratification
+7. Check for duplicates
+8. Document changes")
+```
+
+**Bottom line:** Frame quality critical
+
+---
+
+## Size Measure Updates
+
+```{r size_updates, fig.height=3.5}
+# Population growth adjustments
+years_since_census <- 0:10
+growth_rate <- 0.025
+adjustment_factor <- (1 + growth_rate)^years_since_census
+
+data.frame(Years = years_since_census, 
+           Factor = adjustment_factor) %>%
+  ggplot(aes(x = Years, y = Factor)) +
+  geom_line(size = 1.5, color = "darkgreen") +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(y = "Adjustment Factor",
+       title = "Population Growth Adjustments")
+```
+
+**Bottom line:** 28% growth over 10 years
+
+---
+
+## Stratification Scheme
+
+```{r stratification_scheme}
+# Complex stratification
+strata_def <- data.frame(
+  Province = rep(c("North", "South", "East"), each = 2),
+  Area = rep(c("Urban", "Rural"), 3),
+  Stratum_ID = 1:6,
+  PSUs_Total = c(80, 120, 100, 150, 70, 80),
+  PSUs_Sample = c(40, 60, 50, 75, 35, 40)
+)
+
+kable(strata_def) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** 6 explicit strata
+
+---
+
+## Sample Allocation
+
+```{r sample_allocation, fig.height=3.5}
+# Allocation across strata
+strata_def %>%
+  ggplot(aes(x = interaction(Province, Area), 
+             y = PSUs_Sample, fill = Area)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Stratum", y = "Number of PSUs",
+       title = "PSU Allocation by Stratum")
+```
+
+**Bottom line:** Proportional to size allocation
+
+---
+
+## Field Organization
+
+```{r field_org}
+# Field team structure
+teams <- data.frame(
+  Level = c("National", "Regional", "Team", "Interviewer"),
+  Count = c(1, 4, 20, 80),
+  Responsibility = c("Overall coordination",
+                    "Regional supervision",
+                    "PSU supervision",
+                    "Data collection")
+)
+
+kable(teams) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Hierarchical supervision
+
+---
+
+## Timeline Planning
+
+```{r timeline}
+# Project timeline
+timeline <- data.frame(
+  Month = 1:6,
+  Activity = c("Design & Training", "Listing", 
+               "Data Collection 1", "Data Collection 2",
+               "Data Processing", "Report Writing")
+)
+
+kable(timeline) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** 6-month implementation
+
+---
+
+## Budget Breakdown
+
+```{r budget_breakdown, fig.height=3.5}
+# Cost components
+budget <- data.frame(
+  Component = c("Personnel", "Travel", "Equipment", 
+                "Training", "Other"),
+  Amount = c(200000, 150000, 50000, 30000, 70000),
+  Percent = c(40, 30, 10, 6, 14)
+)
+
+ggplot(budget, aes(x = "", y = Percent, fill = Component)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_minimal() +
+  labs(title = "Budget Distribution")
+```
+
+**Bottom line:** 70% for personnel and travel
+
+---
+
+## Quality Control Measures
+
+```{r quality_control}
+# Quality assurance steps
+qa_measures <- data.frame(
+  Stage = c("Training", "Listing", "Interview", "Data Entry"),
+  Measure = c("Competency test", "10% verification",
+              "5% re-interview", "Double entry 10%"),
+  Target = c(">80% pass", "<5% error", 
+             ">95% match", "<1% error")
+)
+
+kable(qa_measures) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Quality at every stage
+
+---
+
+## Non-Response Protocol
+
+```{r nonresponse_protocol}
+# Handling non-response
+protocol <- data.frame(
+  Visit = c(1, 2, 3, "Replacement"),
+  Time = c("Initial", "Evening", "Weekend", "New HH"),
+  Action = c("First attempt", "Different time",
+             "Different day", "Use replacement")
+)
+
+kable(protocol) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Three attempts before replacement
+
+---
+
+## Weight Calculation Steps
+
+```{r weight_calc_detailed}
+cat("Weight Calculation Process:
+
+1. Base weight = 1/(P1 × P2)
+2. Non-response adjustment
+3. Post-stratification
+4. Trimming extremes
+5. Final normalization
+
+Document each step!")
+```
+
+**Bottom line:** Multiple adjustments needed
+
+---
+
+## Weight Components Example
+
+```{r weight_components_ex}
+# Detailed weight calculation
+weight_calc <- data.frame(
+  Component = c("PSU selection", "HH selection", 
+                "Non-response", "Post-strat", "Final"),
+  Probability = c(0.05, 0.04, 0.85, NA, NA),
+  Weight_Factor = c(20, 25, 1.18, 0.95, 1.0),
+  Cumulative = c(20, 500, 590, 560, 560)
+)
+
+kable(weight_calc) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Final weight = 560
+
+---
+
+## Software Workshop: R
+
+```{r r_workshop}
+# Complete R workflow
+cat("# Load packages
+library(survey)
+library(sampling)
+
+# Read and prepare frame
+frame <- read.csv('psu_frame.csv')
+
+# PPS selection
+n_psu <- 100
+frame$prob <- n_psu * frame$size / sum(frame$size)
+s <- cluster(frame, 'psu_id', n_psu, 'systematic', frame$size)
+
+# Create survey design
+design <- svydesign(
+  ids = ~psu_id + hh_id,
+  strata = ~stratum,
+  weights = ~weight,
+  data = survey_data
+)")
+```
+
+**Bottom line:** Complete R implementation
+
+---
+
+## Software Workshop: Stata
+
+```{r stata_workshop}
+cat("* Stata implementation
+* Load data
+use survey_data.dta, clear
+
+* Set survey design
+svyset psu_id [pw=weight], ///
+  strata(stratum) fpc(fpc1) || ///
+  hh_id, fpc(fpc2)
+
+* Estimation
+svy: mean income
+svy: proportion education_level
+svy: total expenditure
+
+* Subpopulation
+svy, subpop(if urban==1): mean income")
+```
+
+**Bottom line:** Stata handles complex designs
+
+---
+
+## Common Estimation Commands
+
+```{r estimation_commands}
+# Key commands comparison
+commands <- data.frame(
+  Statistic = c("Mean", "Total", "Proportion", "Quantile"),
+  R = c("svymean()", "svytotal()", "svymean()", "svyquantile()"),
+  Stata = c("svy: mean", "svy: total", "svy: proportion", "svy: _pctile")
+)
+
+kable(commands) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Similar across packages
+
+---
+
+## Troubleshooting Guide
+
+```{r troubleshooting}
+# Common issues and solutions
+issues <- data.frame(
+  Problem = c("Lonely PSU", "Missing weights", "Memory error"),
+  Solution = c("options(survey.lonely.psu='adjust')",
+               "Check weight calculation",
+               "Use subset or database")
+)
+
+kable(issues) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Know common fixes
+
+---
+
+## Field Challenge: Access
+
+```{r access_challenge}
+# Dealing with inaccessible PSUs
+access_solutions <- data.frame(
+  Issue = c("Security", "Geographic", "Refusal", "Weather"),
+  Solution = c("Use replacement", "Alternative transport",
+               "Community engagement", "Reschedule"),
+  Impact = c("Bias risk", "Cost increase", 
+             "Timeline delay", "Timeline delay")
+)
+
+kable(access_solutions) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Plan for challenges
+
+---
+
+## Field Challenge: Listing
+
+```{r listing_challenge, fig.height=3.5}
+# Listing quality issues
+listing_issues <- data.frame(
+  Issue = c("Boundary\nunclear", "Rapid\ngrowth", 
+            "Seasonal\nmigration", "Incomplete\nmaps"),
+  Frequency = c(25, 35, 20, 20)
+)
+
+ggplot(listing_issues, aes(x = Issue, y = Frequency)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  theme_minimal() +
+  labs(y = "% of PSUs affected",
+       title = "Common Listing Challenges")
+```
+
+**Bottom line:** 35% have rapid growth issues
+
+---
+
+## Technology Integration
+
+```{r technology}
+# Modern survey tools
+tech_tools <- data.frame(
+  Tool = c("Tablets", "GPS", "Cloud sync", "Real-time monitoring"),
+  Benefit = c("Data quality", "PSU verification", 
+              "Immediate backup", "Quality control"),
+  Challenge = c("Training", "Accuracy", "Connectivity", "Dashboard setup")
+)
+
+kable(tech_tools) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Technology improves quality
+
+---
+
+## Exercise: Complete Design
+
+### Your task (10 minutes):
+
+Design a two-stage cluster sample:
+- Population: 5 million
+- Target sample: 8,000 households  
+- Budget: $400,000
+- Need provincial estimates
+
+Calculate:
+1. Number of PSUs
+2. Cluster size
+3. Stratification
+4. Weights
+
+**Bottom line:** Apply all concepts
+
+---
+
+## Exercise Solution Part 1
+
+```{r exercise_solution_1}
+# Given parameters
+population <- 5000000
+target_n <- 8000
+budget <- 400000
+provinces <- 8
+
+# Cost assumptions
+c_fixed <- 50000
+c_psu <- 1200
+c_hh <- 35
+
+# Available for sampling
+available <- budget - c_fixed
+# For 8000 households
+```
+
+**Bottom line:** $350,000 for fieldwork
+
+---
+
+## Exercise Solution Part 2
+
+```{r exercise_solution_2}
+# Optimal cluster size (assume ICC = 0.05)
+icc <- 0.05
+m_opt <- sqrt(c_psu * (1 - icc) / (c_hh * icc))
+m_use <- 25  # Practical choice
+
+# Number of PSUs
+n_psu <- 8000 / m_use
+
+# Allocation to provinces
+psu_per_province <- n_psu / provinces
+
+c(Total_PSUs = n_psu,
+  Per_Province = psu_per_province,
+  Cluster_Size = m_use)
+```
+
+**Bottom line:** 320 PSUs, 40 per province
+
+---
+
+## Exercise Solution Part 3
+
+```{r exercise_solution_3}
+# Weight calculation example
+# Province 1, PSU 1, HH 1
+N_prov <- 625000  # Province population
+n_psu_prov <- 40  # PSUs in province
+N_psu <- 2500     # PSU population
+n_hh <- 25        # HH selected
+
+# Probabilities
+p1 <- n_psu_prov / (625000/2500)  # PSU selection
+p2 <- n_hh / 100                   # HH selection (assume 100 HH per PSU)
+
+weight <- 1 / (p1 * p2)
+
+c(PSU_Prob = round(p1, 4),
+  HH_Prob = p2,
+  Weight = round(weight))
+```
+
+**Bottom line:** Weight = 250 for this household
+
+---
+
+## Variance Estimation Practice
+
+```{r variance_practice}
+# Using survey package
+cat("# Create design object
+design <- svydesign(
+  ids = ~psu_id,
+  strata = ~province,
+  weights = ~weight,
+  data = your_data
+)
+
+# Estimate with correct SE
+result <- svymean(~income, design)
+confint(result)  # 95% CI")
+```
+
+**Bottom line:** Let software handle variance
+
+---
+
+## Report Template
+
+```{r report_template}
+cat("Survey Report Structure:
+
+1. Executive Summary
+2. Methodology
+   - Design overview
+   - Sampling frame
+   - Selection procedures
+   - Weight calculation
+3. Quality Indicators
+   - Response rates
+   - Design effects
+   - Coefficient of variation
+4. Key Findings
+5. Appendices
+   - Detailed tables
+   - Questionnaire")
+```
+
+**Bottom line:** Standard reporting format
+
+---
+
+## Quality Indicators Report
+
+```{r quality_report}
+# Standard quality metrics
+quality_report <- data.frame(
+  Indicator = c("Response Rate", "DEFF", "CV", 
+                "Item Non-response", "ICC"),
+  Overall = c("82%", "2.1", "2.5%", "3%", "0.06"),
+  Urban = c("78%", "1.9", "2.8%", "2%", "0.04"),
+  Rural = c("85%", "2.3", "3.1%", "4%", "0.08")
+)
+
+kable(quality_report) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Document quality by domain
+
+---
+
+## Lessons from the Field
+
+### Experienced surveyor tips:
+
+1. **Always have Plan B** - PSUs will fail
+2. **Train for reality** - not just theory
+3. **Pilot thoroughly** - find problems early
+4. **Communicate constantly** - with teams
+5. **Document deviations** - transparency
+
+**Bottom line:** Experience matters
+
+---
+
+## Regional Variations
+
+```{r regional_var, fig.height=3.5}
+# Response patterns by region
+regions <- data.frame(
+  Region = c("North", "South", "East", "West", "Central"),
+  Response_Rate = c(85, 78, 82, 75, 88),
+  Avg_Attempts = c(1.8, 2.3, 2.0, 2.5, 1.6)
+)
+
+ggplot(regions, aes(x = Avg_Attempts, y = Response_Rate)) +
+  geom_point(size = 4, color = "darkblue") +
+  geom_text(aes(label = Region), vjust = -1) +
+  theme_minimal() +
+  labs(x = "Average Contact Attempts",
+       y = "Response Rate (%)",
+       title = "Regional Response Patterns")
+```
+
+**Bottom line:** Adjust effort by region
+
+---
+
+## Cost Tracking
+
+```{r cost_tracking}
+# Monitor costs during fieldwork
+cost_monitor <- data.frame(
+  Week = 1:4,
+  Planned = c(25, 50, 75, 100),
+  Actual = c(22, 48, 77, 95),
+  Status = c("On track", "On track", "Slight over", "Under budget")
+)
+
+kable(cost_monitor) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Track weekly
+
+---
+
+## Group Discussion
+
+### Share experiences (5 minutes):
+
+In groups of 3-4, discuss:
+
+1. Biggest cluster sampling challenge?
+2. How did you solve it?
+3. What would you do differently?
+
+Report back one key insight
+
+**Bottom line:** Learn from peers
+
+---
+
+## Innovation Spotlight
+
+```{r innovation}
+# Emerging methods
+innovations <- data.frame(
+  Method = c("Adaptive sampling", "GIS integration", 
+             "Machine learning weights", "Real-time dashboards"),
+  Application = c("Rare populations", "Frame updates",
+                 "Non-response adjustment", "Quality monitoring"),
+  Maturity = c("Research", "Operational", "Pilot", "Operational")
+)
+
+kable(innovations) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Field advancing rapidly
+
+---
+
+## Ethical Considerations
+
+```{r ethics}
+cat("Ethical Guidelines for Cluster Sampling:
+
+1. Community consent before PSU entry
+2. Respect local customs and leaders  
+3. Ensure respondent anonymity
+4. Avoid cluster identification in reports
+5. Fair representation of all groups
+6. Transparent selection process
+7. Return findings to communities")
+```
+
+**Bottom line:** Ethics essential
+
+---
+
+## Environmental Impact
+
+```{r environmental, fig.height=3.5}
+# Carbon footprint comparison
+carbon <- data.frame(
+  Design = c("SRS", "Cluster", "Two-stage", "Stratified\nCluster"),
+  CO2_kg = c(5000, 2000, 1800, 1500)
+)
+
+ggplot(carbon, aes(x = Design, y = CO2_kg)) +
+  geom_bar(stat = "identity", fill = "darkgreen", alpha = 0.7) +
+  theme_minimal() +
+  labs(y = "CO2 Emissions (kg)",
+       title = "Environmental Impact by Design")
+```
+
+**Bottom line:** Clustering reduces emissions 70%
+
+---
+
+## Future Directions
+
+### Where field is heading:
+
+- **Hybrid frames** (area + list)
+- **Mixed modes** (F2F + phone + web)
+- **Continuous surveys** (rolling samples)
+- **Small area estimation** (model-based)
+- **Paradata utilization** (process data)
+
+**Bottom line:** Complexity increasing
+
+---
+
+## Resources
+
+```{r resources}
+resources <- data.frame(
+  Type = c("Books", "Software", "Guidelines", "Forums"),
+  Resource = c("Lohr (2021), Valliant et al (2018)",
+              "R survey, Stata svy, SUDAAN",
+              "UN Stats, DHS, LSMS",
+              "Survey Stats listserv, AAPOR")
+)
+
+kable(resources) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Continue learning
+
+---
+
+## Certification Prep
+
+### Key concepts for exams:
+
+☐ ICC calculation and interpretation  
+☐ DEFF formula and application  
+☐ PPS selection procedures  
+☐ Weight calculation  
+☐ Variance estimation methods  
+☐ Software implementation  
+
+**Bottom line:** Master fundamentals
+
+---
+
+## Final Exercise
+
+### Comprehensive problem (15 minutes):
+
+A country needs health survey:
+- 10M population in 5 regions
+- Varies by urbanization (30% urban)
+- Need estimates by region and urban/rural
+- Budget: $750,000
+- Timeline: 6 months
+
+Design complete sample!
+
+**Bottom line:** Integrate everything
+
+---
+
+## Part 4 Summary
+
+### You've accomplished:
+
+✅ Analyzed complex cases  
+✅ Practiced software implementation  
+✅ Solved field challenges  
+✅ Designed complete surveys  
+✅ Understood quality measures  
+
+**Bottom line:** Ready for practice!
+
+---
+
+## Day 3 Reflection
+
+### Consider:
+
+1. Most valuable concept learned?
+2. How will you apply this?
+3. What needs more practice?
+4. Questions remaining?
+
+Write brief reflection
+
+**Bottom line:** Consolidate learning
+
+---
+
+## Tomorrow Preview
+
+### Day 4: Complex Designs
+
+- Combining techniques
+- Multi-phase sampling  
+- Panel surveys
+- Rotating samples
+- Advanced estimation
+
+**Bottom line:** Building on today
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### Before Part 5:
+- Submit exercises
+- Prepare questions
+- Stretch and hydrate
+
+### Final session:
+Case studies and Q&A
+
+**Bottom line:** Almost done!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 4
+
+## Slides 226-300 Complete
+
+### Next: Part 5 - Case Studies & Wrap-up
+
+---
+
+
+---
+
+## Welcome to Part 5!
+
+### Final Session: Case Studies & Synthesis
+
+Topics for final 50 slides:
+- Comprehensive case studies
+- Integration of concepts
+- Q&A session
+- Action planning
+- Day 3 wrap-up
+
+**Bottom line:** Bringing it all together
+
+---
+
+## Case Study 1: Agricultural Survey
+
+```{r agri_survey}
+# National agricultural survey design
+agri_design <- data.frame(
+  Component = c("Population", "Frame", "Stratification",
+                "PSUs", "Sample Size", "Stages"),
+  Detail = c("2M farms", "Agricultural census", 
+             "Region × Farm size", "800 EAs",
+             "10,000 farms", "2-stage")
+)
+
+kable(agri_design) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Complex agricultural design
+
+---
+
+## Agricultural Design Details
+
+```{r agri_details}
+# Specific design features
+agri_features <- data.frame(
+  Stage = c("Stage 1", "Stage 2"),
+  Unit = c("Enumeration Area", "Farm"),
+  Method = c("PPS by cultivated area", "Stratified by size"),
+  Number = c("800 EAs", "12-15 farms/EA"),
+  Challenge = c("Outdated frame", "Seasonal variation")
+)
+
+kable(agri_features) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Size-based selection crucial
+
+---
+
+## Agricultural ICC Values
+
+```{r agri_icc, fig.height=3.5}
+# Typical ICC for agricultural variables
+agri_vars <- data.frame(
+  Variable = c("Crop yield", "Farm income", "Livestock", 
+               "Technology", "Labor"),
+  ICC = c(0.15, 0.12, 0.18, 0.08, 0.05)
+)
+
+ggplot(agri_vars, aes(x = reorder(Variable, ICC), y = ICC)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "", y = "Intraclass Correlation",
+       title = "Agricultural Variables Show High Clustering")
+```
+
+**Bottom line:** High ICCs require careful design
+
+---
+
+## Case Study 2: Education Survey
+
+```{r education_survey}
+# School-based survey design
+edu_design <- data.frame(
+  Level = c("National", "Districts", "Schools", "Students"),
+  Count = c("1", "50", "300", "9,000"),
+  Selection = c("Census", "All", "PPS by enrollment", "SRS within class"),
+  Weight_Range = c("1", "1", "5-50", "100-500")
+)
+
+kable(edu_design) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Three-stage hierarchical design
+
+---
+
+## School Clustering Effects
+
+```{r school_clustering}
+# Design effects in education
+edu_deff <- data.frame(
+  Outcome = c("Test scores", "Attendance", "Resources", "SES"),
+  ICC = c(0.20, 0.15, 0.35, 0.25),
+  Class_Size = c(30, 30, 30, 30),
+  DEFF = c(6.8, 5.4, 11.2, 8.3)
+)
+
+kable(edu_deff) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** School effects very strong
+
+---
+
+## Case Study 3: Business Survey
+
+```{r business_survey}
+# Establishment survey design
+business_design <- data.frame(
+  Stratum = c("Large", "Medium", "Small", "Micro"),
+  Frame_Count = c(500, 2000, 10000, 50000),
+  Sample = c(500, 400, 500, 200),
+  Method = c("Census", "SRS", "Cluster by area", "Area sample")
+)
+
+kable(business_design) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Mixed approach by size
+
+---
+
+## Business Survey Challenges
+
+```{r business_challenges}
+cat("Unique Business Survey Issues:
+
+1. Frame deterioration (20% annual change)
+2. Multi-establishment enterprises
+3. Seasonal businesses
+4. Informal sector coverage
+5. Size measure volatility
+6. Industry classification changes
+7. Non-response correlation with size
+
+Solutions: Adaptive design, multiple frames")
+```
+
+**Bottom line:** Business surveys complex
+
+---
+
+## Case Study 4: Panel Survey
+
+```{r panel_survey}
+# Longitudinal design
+panel_design <- data.frame(
+  Wave = 1:5,
+  Year = 2020:2024,
+  Original_PSUs = 200,
+  Original_HH = 4000,
+  Retained = c(4000, 3600, 3200, 2850, 2500),
+  Attrition = c("0%", "10%", "20%", "29%", "38%")
+)
+
+kable(panel_design) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Attrition major challenge
+
+---
+
+## Panel Attrition Analysis
+
+```{r panel_attrition, fig.height=3.5}
+# Attrition patterns
+waves <- 1:5
+retained <- c(100, 90, 80, 71, 62)
+
+data.frame(Wave = waves, Retained = retained) %>%
+  ggplot(aes(x = Wave, y = Retained)) +
+  geom_line(size = 1.5, color = "red") +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(y = "% Retained",
+       title = "Cumulative Panel Attrition")
+```
+
+**Bottom line:** 38% loss over 5 waves
+
+---
+
+## Case Study 5: Rapid Assessment
+
+```{r rapid_assessment}
+# Emergency survey design
+rapid_design <- data.frame(
+  Parameter = c("Timeline", "Sample", "Method", 
+                "PSUs", "Technology", "Quality"),
+  Standard = c("6 months", "10,000", "Face-to-face",
+              "400", "Paper", "Full QA"),
+  Rapid = c("3 weeks", "1,200", "Phone + F2F",
+           "30", "Mobile", "Minimal QA")
+)
+
+kable(rapid_design) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Speed vs quality trade-off
+
+---
+
+## Integration Exercise
+
+### Combine all concepts (10 minutes):
+
+Design a survey with:
+- Stratification (urban/rural)
+- Two-stage cluster sampling
+- PPS selection
+- Panel component
+- Domain requirements
+
+Work in pairs!
+
+**Bottom line:** Synthesize learning
+
+---
+
+## Integration Solution
+
+```{r integration_solution}
+# Integrated design solution
+integrated <- data.frame(
+  Component = c("Strata", "PSUs/stratum", "HH/PSU", 
+                "Panel %", "Domains", "Total n"),
+  Urban = c("4 regions", "30", "20", "50%", "4", "2,400"),
+  Rural = c("4 regions", "50", "20", "50%", "4", "4,000"),
+  Total = c("8 strata", "320", "20", "50%", "8", "6,400")
+)
+
+kable(integrated) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Complex but feasible
+
+---
+
+## Weight Calculation Review
+
+```{r weight_review}
+# Complete weight calculation
+cat("Final Weight Components:
+
+W = W_base × W_nr × W_ps × W_trim
+
+Where:
+W_base = 1/(P1 × P2)
+W_nr = 1/response_rate
+W_ps = population/weighted_sum
+W_trim = trimming_factor
+
+Always verify: Σ(weights) ≈ Population")
+```
+
+**Bottom line:** Multiple adjustments
+
+---
+
+## Variance Estimation Summary
+
+```{r variance_summary}
+# Methods comparison
+var_methods <- data.frame(
+  Method = c("Taylor", "Jackknife", "Bootstrap", "BRR"),
+  Best_For = c("Means/totals", "Complex stats", 
+               "Any statistic", "2-PSU strata"),
+  Speed = c("Fastest", "Medium", "Slowest", "Fast"),
+  Implementation = c("Easy", "Medium", "Complex", "Medium")
+)
+
+kable(var_methods) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Choose appropriate method
+
+---
+
+## Software Comparison
+
+```{r software_compare}
+# Survey software capabilities
+software <- data.frame(
+  Feature = c("Complex designs", "Graphics", "Speed", 
+              "Documentation", "Cost"),
+  R = c("Excellent", "Excellent", "Good", "Good", "Free"),
+  Stata = c("Excellent", "Good", "Excellent", "Excellent", "$$$"),
+  SAS = c("Excellent", "Fair", "Excellent", "Good", "$$$$"),
+  SPSS = c("Good", "Good", "Good", "Fair", "$$$")
+)
+
+kable(software) %>%
+  kable_styling(font_size = 9)
+```
+
+**Bottom line:** R and Stata dominate
+
+---
+
+## Quality Assurance Checklist
+
+```{r qa_checklist}
+cat("✓ Frame coverage checked
+✓ PSU selection documented
+✓ Weights calculated correctly
+✓ Variance method appropriate
+✓ Response rates monitored
+✓ Data quality indicators computed
+✓ Documentation complete
+✓ Reproducible code archived
+✓ Metadata preserved
+✓ Reports peer-reviewed")
+```
+
+**Bottom line:** Systematic QA essential
+
+---
+
+## Common Mistakes to Avoid
+
+```{r mistakes}
+# Top 10 mistakes
+mistakes <- data.frame(
+  Rank = 1:5,
+  Mistake = c("Ignoring clustering in analysis",
+              "Wrong variance formula",
+              "No weight documentation",
+              "Too few PSUs (<30)",
+              "Not planning for non-response"),
+  Impact = c("Invalid inference", "Wrong SEs",
+             "Non-reproducible", "Unstable estimates",
+             "Biased results")
+)
+
+kable(mistakes) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Learn from others' errors
+
+---
+
+## Best Practices Summary
+
+### Golden rules:
+
+1. **Document everything** - Future you will thank you
+2. **Keep it simple** - Complex enough, not more
+3. **Plan for problems** - They will happen
+4. **Use software** - Don't calculate by hand
+5. **Check, check, check** - Verify at each step
+
+**Bottom line:** Quality through discipline
+
+---
+
+## Advanced Topics Preview
+
+### Where to go next:
+
+- Small area estimation
+- Adaptive sampling
+- Network sampling  
+- Bayesian survey inference
+- Machine learning integration
+- Real-time sampling
+
+**Bottom line:** Field evolving rapidly
+
+---
+
+## Q&A Session
+
+### Open Floor (20 minutes)
+
+Your questions on:
+- Concepts unclear?
+- Implementation challenges?
+- Software issues?
+- Country-specific needs?
+- Resources needed?
+
+**Bottom line:** No question too basic
+
+---
+
+## Question 1: Small PSUs
+
+```{r q1_small_psu}
+cat("Q: What if PSUs are very small?
+
+A: Options:
+1. Combine adjacent PSUs
+2. Use larger area units
+3. Census small PSUs
+4. Adjust design (3-stage)
+
+Key: Minimum ~50-75 households/PSU")
+```
+
+**Bottom line:** Flexibility needed
+
+---
+
+## Question 2: Budget Constraints
+
+```{r q2_budget}
+cat("Q: Budget cut mid-survey?
+
+A: Strategies:
+1. Reduce cluster size (not PSUs!)
+2. Subsample domains
+3. Phone follow-up
+4. Reduce questionnaire
+5. Phased approach
+
+Never: Reduce PSUs below 30")
+```
+
+**Bottom line:** Maintain design integrity
+
+---
+
+## Question 3: High ICC
+
+```{r q3_high_icc, fig.height=3}
+# Impact of very high ICC
+icc_range <- seq(0, 0.5, 0.05)
+deff_25 <- 1 + 24 * icc_range
+
+data.frame(ICC = icc_range, DEFF = deff_25) %>%
+  ggplot(aes(x = ICC, y = DEFF)) +
+  geom_line(size = 1.5, color = "red") +
+  geom_hline(yintercept = 3, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "DEFF Explodes with High ICC (m=25)")
+```
+
+**Bottom line:** Reduce cluster size
+
+---
+
+## Question 4: Weight Trimming
+
+```{r q4_weights}
+cat("Q: When to trim weights?
+
+A: Guidelines:
+- If CV(weights) > 2
+- If max/min > 10
+- If few extreme weights
+
+Methods:
+- Trim at percentiles
+- Winsorize
+- Cap at threshold
+
+Document impact on estimates!")
+```
+
+**Bottom line:** Balance bias vs variance
+
+---
+
+## Question 5: Software Choice
+
+```{r q5_software}
+# Decision tree for software
+cat("Choose Software:
+
+Free? → Yes → R (survey package)
+      ↓
+      No → Stata usually best
+
+Complex? → Yes → R or Stata
+        ↓
+        No → Any package
+
+Team skills? → R/Python → R
+           ↓
+           → Statistical → Stata
+           → Business → SPSS/SAS")
+```
+
+**Bottom line:** Consider context
+
+---
+
+## Action Planning
+
+### Your next steps:
+
+☐ Review your current design  
+☐ Calculate ICC for key variables  
+☐ Assess DEFF impact  
+☐ Consider design improvements  
+☐ Update documentation  
+☐ Train team on concepts  
+
+**Bottom line:** Apply immediately
+
+---
+
+## Country-Specific Planning
+
+```{r country_planning}
+# Template for country planning
+planning <- data.frame(
+  Task = c("Assess current practice", "Identify gaps",
+           "Design improvements", "Pilot test",
+           "Implementation", "Evaluation"),
+  Timeline = c("Week 1-2", "Week 3", "Week 4-6",
+              "Month 2", "Month 3-6", "Month 7"),
+  Responsible = c("Team lead", "All", "Statistician",
+                 "Field team", "All", "External")
+)
+
+kable(planning) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Systematic improvement
+
+---
+
+## Resources for Continued Learning
+
+```{r resources_detailed}
+cat("Essential Resources:
+
+Books:
+- Lohr 'Sampling: Design and Analysis' (2021)
+- Levy & Lemeshow 'Sampling of Populations' (2013)
+
+Online:
+- UCLA IDRE Survey Analysis
+- Penn State STAT 506
+- CDC NHANES tutorials
+
+Communities:
+- Survey Research Methods Section (ASA)
+- AAPOR (Public Opinion)")
+```
+
+**Bottom line:** Keep learning
+
+---
+
+## Regional Collaboration
+
+```{r regional_collab}
+# SADC collaboration opportunities
+collaboration <- data.frame(
+  Activity = c("Annual workshop", "Peer review",
+               "Joint surveys", "Method sharing"),
+  Frequency = c("Yearly", "Ongoing", "Biennial", "Quarterly"),
+  Benefit = c("Capacity building", "Quality improvement",
+             "Cost sharing", "Standardization")
+)
+
+kable(collaboration) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Stronger together
+
+---
+
+## Key Formulas Reference
+
+```{r formula_reference}
+# Quick reference card
+formulas <- data.frame(
+  Concept = c("ICC", "DEFF", "n_eff", "Optimal m", "Weight"),
+  Formula = c("ρ = σ²_b/(σ²_b + σ²_w)",
+             "1 + (m-1)ρ",
+             "n/DEFF",
+             "√[c₁(1-ρ)/(c₂ρ)]",
+             "1/(P₁ × P₂)")
+)
+
+kable(formulas) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Keep handy
+
+---
+
+## Final Group Exercise
+
+### Design challenge (15 minutes):
+
+Your minister wants:
+- "Representative" survey
+- Results in 1 month
+- $50,000 budget
+- National + 10 provinces
+- n = 10,000
+
+How do you respond?
+
+**Bottom line:** Reality check
+
+---
+
+## Exercise Reality Check
+
+```{r reality_check}
+cat("Reality Response:
+
+'Minister, with $50,000 and 1 month:
+- Maximum n ≈ 1,000 (not 10,000)
+- National OR 3 provinces (not all 10)
+- Phone/web only (not face-to-face)
+- Existing frame required
+- Limited quality assurance
+
+Recommend: Phased approach or 
+increased budget/timeline'")
+```
+
+**Bottom line:** Manage expectations
+
+---
+
+## Success Stories
+
+```{r success_stories}
+# Regional successes
+successes <- data.frame(
+  Country = c("South Africa", "Kenya", "Ghana"),
+  Survey = c("GHS", "KDHS", "GLSS"),
+  Innovation = c("Integrated design", "Mobile collection",
+                "Community sampling"),
+  Impact = c("Policy change", "Health programs", 
+            "Poverty reduction")
+)
+
+kable(successes) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Good design matters
+
+---
+
+## Participant Feedback
+
+### Quick evaluation:
+
+Rate 1-5:
+1. Content clarity
+2. Practical relevance
+3. Pace appropriate
+4. Examples helpful
+5. Ready to apply
+
+Plus: One thing to improve?
+
+**Bottom line:** Help us improve
+
+---
+
+## Day 3 Key Messages
+
+### Remember:
+
+1. **Clustering inevitable** - embrace it
+2. **ICC drives design** - measure it
+3. **PPS improves efficiency** - use it
+4. **Software handles complexity** - trust it
+5. **Documentation critical** - do it
+
+**Bottom line:** Foundation established
+
+---
+
+## Certificate Preparation
+
+```{r certificate}
+cat("For SADC Certificate:
+
+Demonstrate understanding of:
+✓ Cluster sampling concepts
+✓ ICC calculation
+✓ DEFF interpretation
+✓ PPS selection
+✓ Two-stage designs
+✓ Weight calculation
+✓ Variance estimation
+✓ Software implementation")
+```
+
+**Bottom line:** Competency achieved
+
+---
+
+## Thank You!
+
+### Day 3 Complete!
+
+You've mastered:
+- Multi-stage designs
+- Cluster sampling
+- PPS methodology
+- Complex weights
+- Variance estimation
+
+See you tomorrow for Day 4!
+
+**Bottom line:** Well done!
+
+---
+
+## Homework
+
+### Before tomorrow:
+
+1. Calculate ICC for one variable in your data
+2. Estimate DEFF for your last survey
+3. Review PPS selection steps
+4. List three improvements for your design
+5. Prepare one question for Day 4
+
+**Bottom line:** Reinforce learning
+
+---
+
+## Tomorrow's Preview
+
+### Day 4: Complex Survey Designs
+
+Morning:
+- Combining all techniques
+- Multi-phase sampling
+- Domain estimation
+
+Afternoon:
+- Panel designs
+- Rotating samples
+- Advanced topics
+
+**Bottom line:** Building complexity
+
+---
+
+## Contact Information
+
+```{r contact}
+cat("Stay Connected:
+
+Workshop Materials:
+github.com/sadc-survey-workshop
+
+Discussion Forum:
+sadc-survey.discourse.group
+
+Email Support:
+survey.support@sadc.int
+
+WhatsApp Group:
+[QR Code Here]")
+```
+
+**Bottom line:** Support continues
+
+---
+
+## Final Thought
+
+### Quote of the day:
+
+> "All models are wrong, but some are useful"
+> - George Box
+
+Applied to sampling:
+
+> "All samples are biased, but good designs minimize it"
+
+**Bottom line:** Pursue excellence, accept reality
+
+---
+
+## Group Photo!
+
+### 📸 Capture the moment
+
+Stand by your country flag!
+
+Share on social media:
+#SADCSurvey #ClusterSampling #Day3Done
+
+**Bottom line:** Celebrate progress
+
+---
+
+## Safe Travels
+
+### Evening reminders:
+
+- Save all materials
+- Backup your work
+- Review notes tonight
+- Rest well
+- Hydrate
+
+See you at 8:00 AM tomorrow!
+
+**Bottom line:** Rest and return ready
+
+---
+
+class: center, middle, inverse
+
+# End of Day 3
+
+## Multi-Stage and Cluster Sampling
+
+### Complete! 
+
+#### Total slides: 350
+#### Concepts mastered: ✓
+#### Ready for Day 4: ✓
+
+---

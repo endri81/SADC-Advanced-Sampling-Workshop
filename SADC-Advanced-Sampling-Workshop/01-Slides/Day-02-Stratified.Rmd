@@ -1,0 +1,5579 @@
+---
+title: "Day 2: Deep Dive into Stratified Sampling"
+subtitle: "Part 1: Foundations to Proportional Allocation"
+author: "SADC Survey Sampling Workshop"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: [default, default-fonts, "custom.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%/%total%"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 9, 
+  fig.height = 4.5,
+  fig.align = "center",
+  cache = FALSE,
+  comment = "#>"
+)
+
+# Load packages
+library(tidyverse)
+library(survey)
+library(knitr)
+library(kableExtra)
+
+# Create/load data
+if (!exists("sadc_survey_data")) {
+  set.seed(2024)
+  n <- 10000
+  
+  sadc_survey_data <- data.frame(
+    id = 1:n,
+    province = factor(sample(c("Gauteng", "Limpopo", "KZN", "Western Cape"), 
+                            n, replace = TRUE, 
+                            prob = c(0.35, 0.20, 0.30, 0.15))),
+    area = factor(sample(c("Urban", "Rural"), n, replace = TRUE, 
+                        prob = c(0.65, 0.35))),
+    psu_id = sample(1:200, n, replace = TRUE),
+    income = round(rlnorm(n, meanlog = 10, sdlog = 1.2), 0),
+    household_size = pmin(10, rpois(n, lambda = 3.5) + 1),
+    has_electricity = rbinom(n, 1, prob = 0.72),
+    employment_status = factor(sample(c("Employed", "Unemployed", "Not in Labor Force"),
+                                     n, replace = TRUE, prob = c(0.45, 0.15, 0.40))),
+    education_years = pmin(20, rpois(n, lambda = 10))
+  )
+  
+  # Add known totals
+  sadc_survey_data$known_pop_province <- c(15800000, 5800000, 11500000, 4700000)[
+    as.numeric(sadc_survey_data$province)]
+  
+  # Create stratum
+  sadc_survey_data$stratum <- paste(sadc_survey_data$province, 
+                                    sadc_survey_data$area, sep = "_")
+  
+  # Add variance by stratum
+  strata_var <- c("Gauteng_Urban" = 1.8, "Gauteng_Rural" = 1.2,
+                  "Limpopo_Urban" = 1.4, "Limpopo_Rural" = 0.9,
+                  "KZN_Urban" = 1.6, "KZN_Rural" = 1.0,
+                  "Western Cape_Urban" = 1.7, "Western Cape_Rural" = 1.1)
+  
+  for (s in names(strata_var)) {
+    idx <- sadc_survey_data$stratum == s
+    sadc_survey_data$income[idx] <- sadc_survey_data$income[idx] * strata_var[s]
+  }
+}
+
+# Define functions
+calculate_stratum_stats <- function(data, strat_var, target_var) {
+  data %>%
+    group_by({{strat_var}}) %>%
+    summarise(
+      N_h = n(),
+      mean_h = mean({{target_var}}, na.rm = TRUE),
+      sd_h = sd({{target_var}}, na.rm = TRUE),
+      cv_h = sd_h / mean_h * 100,
+      .groups = 'drop'
+    ) %>%
+    mutate(W_h = N_h / sum(N_h))
+}
+
+proportional_allocation <- function(strata_stats, n_total) {
+  strata_stats %>%
+    mutate(
+      n_h = round(n_total * W_h),
+      sampling_fraction = n_h / N_h
+    )
+}
+
+neyman_allocation <- function(strata_stats, n_total) {
+  strata_stats %>%
+    mutate(
+      allocation_factor = N_h * sd_h,
+      n_h = round(n_total * allocation_factor / sum(allocation_factor)),
+      sampling_fraction = n_h / N_h
+    )
+}
+
+draw_stratified_sample <- function(data, strat_var, allocation_table) {
+  sample_list <- list()
+  for (i in 1:nrow(allocation_table)) {
+    stratum_name <- allocation_table[[strat_var]][i]
+    n_h <- allocation_table$n_h[i]
+    N_h <- allocation_table$N_h[i]
+    
+    stratum_data <- data[data[[strat_var]] == stratum_name, ]
+    if (n_h > 0 && n_h <= nrow(stratum_data)) {
+      idx <- sample(1:nrow(stratum_data), n_h, replace = FALSE)
+      sample_stratum <- stratum_data[idx, ]
+      sample_stratum$design_weight <- N_h / n_h
+      sample_list[[i]] <- sample_stratum
+    }
+  }
+  do.call(rbind, sample_list)
+}
+```
+
+class: center, middle, inverse
+
+# Day 2: Deep Dive into Stratified Sampling
+
+## From Foundation to Mastery
+
+### Part 1 of 5
+
+---
+
+## Welcome Back!
+
+### Today's Roadmap
+
+```{r schedule, echo=FALSE}
+tibble(
+  Session = c("Part 1", "Part 2", "Part 3", "Part 4", "Part 5"),
+  Time = c("08:00-09:30", "09:45-11:15", "11:30-13:00", "14:00-15:30", "15:45-17:00"),
+  Topic = c("Foundations & Proportional", "Optimal Allocation", 
+            "Post-Stratification", "Variance Estimation", "Capstone")
+) %>%
+  kable(format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 16)
+```
+
+**Bottom line:** 8 hours to stratification mastery
+
+---
+
+## Energy Check
+
+### Quick Activation (30 seconds)
+
+1. Stand and stretch
+2. Roll shoulders 3x
+3. Deep breath
+4. Ready to learn!
+
+**Bottom line:** Active body = active mind
+
+---
+
+## Our Data Universe
+
+```{r data_overview}
+# Check data
+nrow(sadc_survey_data)
+ncol(sadc_survey_data)
+```
+
+**Bottom line:** 10,000 households, 11 variables
+
+---
+
+## Geographic Distribution
+
+```{r geographic}
+table(sadc_survey_data$province)
+```
+
+**Bottom line:** Unequal provincial distribution
+
+---
+
+## Urban-Rural Split
+
+```{r urban_rural}
+table(sadc_survey_data$area)
+```
+
+**Bottom line:** 65% urban, 35% rural
+
+---
+
+## Creating Strata
+
+```{r strata_creation}
+# Already created in setup
+unique(sadc_survey_data$stratum)[1:4]
+length(unique(sadc_survey_data$stratum))
+```
+
+**Bottom line:** 8 strata from 4 provinces × 2 areas
+
+---
+
+## Stratum Sizes
+
+```{r stratum_sizes}
+stratum_sizes <- table(sadc_survey_data$stratum)
+sort(stratum_sizes, decreasing = TRUE)
+```
+
+**Bottom line:** Sizes range from 525 to 2259
+
+---
+
+## Visualizing Strata
+
+```{r viz_strata, fig.height=4}
+data.frame(stratum_sizes) %>%
+  ggplot(aes(x = reorder(Var1, -Freq), y = Freq)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Stratum", y = "Size", title = "Population by Stratum")
+```
+
+**Bottom line:** 4x variation in stratum sizes
+
+---
+
+## Income Distribution
+
+```{r income_stats}
+summary(sadc_survey_data$income)
+```
+
+**Bottom line:** Highly skewed income data
+
+---
+
+## Income Variability
+
+```{r income_cv}
+cv <- sd(sadc_survey_data$income) / mean(sadc_survey_data$income)
+round(cv * 100, 1)
+```
+
+**Bottom line:** CV > 100% indicates high variability
+
+---
+
+## Income by Stratum
+
+```{r income_histogram, fig.height=4}
+ggplot(sadc_survey_data, aes(x = income)) +
+  geom_histogram(bins = 30, fill = "darkblue", alpha = 0.7) +
+  scale_x_continuous(labels = scales::comma, limits = c(0, 200000)) +
+  theme_minimal() +
+  labs(title = "Income Distribution", x = "Income", y = "Count")
+```
+
+**Bottom line:** Right-skewed, typical of income
+
+---
+
+## Knowledge Check #1
+
+### Silent Self-Test:
+
+1. How many strata do we have?
+2. Which is the largest stratum?
+3. What's our target sample size?
+
+Think, don't speak!
+
+**Bottom line:** 8 strata, Gauteng_Urban largest, n=800
+
+---
+
+## Why Stratify?
+
+### The Variance Decomposition
+
+Total Variance = Within-Strata + Between-Strata
+
+```{r variance_decomp}
+within_var <- sadc_survey_data %>%
+  group_by(stratum) %>%
+  summarise(v = var(income), .groups = 'drop') %>%
+  summarise(mean(v)) %>% pull()
+
+total_var <- var(sadc_survey_data$income)
+reduction <- (1 - within_var/total_var) * 100
+round(reduction, 1)
+```
+
+**Bottom line:** 51% potential variance reduction!
+
+---
+
+## Calculate Stratum Statistics
+
+```{r calc_stats}
+strata_stats <- calculate_stratum_stats(
+  sadc_survey_data, stratum, income
+)
+
+strata_stats %>% 
+  select(stratum, N_h, mean_h) %>%
+  head(3) %>%
+  mutate(mean_h = round(mean_h, 0))
+```
+
+**Bottom line:** Statistics calculated for allocation
+
+---
+
+## Stratum Variability
+
+```{r show_cv}
+strata_stats %>%
+  select(stratum, sd_h, cv_h) %>%
+  arrange(desc(cv_h)) %>%
+  head(3) %>%
+  mutate(across(where(is.numeric), ~round(., 1)))
+```
+
+**Bottom line:** CVs vary from 60% to 120%
+
+---
+
+## Three Allocation Methods
+
+```{r methods_table, echo=FALSE}
+tibble(
+  Method = c("Equal", "Proportional", "Optimal"),
+  Formula = c("n/L", "n×(Nh/N)", "n×(Nh×Sh)/Σ"),
+  Best_When = c("Equal precision needed", 
+                "Default choice",
+                "Minimize variance")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Three methods, different objectives
+
+---
+
+## Method 1: Equal Allocation
+
+```{r equal_setup}
+n_total <- 800
+n_strata <- 8
+n_equal <- n_total / n_strata
+n_equal
+```
+
+**Bottom line:** 100 observations per stratum
+
+---
+
+## Equal Allocation Table
+
+```{r equal_alloc}
+equal_alloc <- strata_stats %>%
+  mutate(
+    n_h = 100,
+    sampling_fraction = n_h / N_h
+  )
+
+equal_alloc %>%
+  select(stratum, N_h, n_h, sampling_fraction) %>%
+  head(4) %>%
+  mutate(sampling_fraction = round(sampling_fraction, 3))
+```
+
+**Bottom line:** Very different sampling fractions
+
+---
+
+## Equal Allocation Problem
+
+```{r equal_viz, fig.height=4}
+equal_alloc %>%
+  ggplot(aes(x = reorder(stratum, sampling_fraction), 
+             y = sampling_fraction)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_hline(yintercept = 0.08, linetype = "dashed") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "", y = "Sampling Fraction", 
+       title = "Unequal Sampling Fractions")
+```
+
+**Bottom line:** Inefficient for population estimates
+
+---
+
+## Method 2: Proportional
+
+```{r prop_alloc}
+prop_alloc <- proportional_allocation(strata_stats, n_total)
+
+prop_alloc %>%
+  select(stratum, N_h, n_h) %>%
+  head(4)
+```
+
+**Bottom line:** Sample proportional to size
+
+---
+
+## Proportional Properties
+
+```{r prop_properties}
+# Check sampling fractions
+unique(round(prop_alloc$sampling_fraction, 3))
+```
+
+**Bottom line:** Constant sampling fraction = self-weighting
+
+---
+
+## Proportional Formula
+
+### Mathematical Foundation
+
+$$n_h = n \times \frac{N_h}{N}$$
+
+```{r prop_example}
+# Example: Gauteng_Urban
+N_h <- 2259
+N <- 10000
+n <- 800
+n_h <- n * (N_h / N)
+round(n_h)
+```
+
+**Bottom line:** Maintains population proportions
+
+---
+
+## Compare Equal vs Proportional
+
+```{r compare_ep}
+comparison <- data.frame(
+  Stratum = equal_alloc$stratum,
+  Equal = 100,
+  Proportional = prop_alloc$n_h,
+  Difference = prop_alloc$n_h - 100
+)
+
+comparison %>%
+  arrange(desc(abs(Difference))) %>%
+  head(4)
+```
+
+**Bottom line:** Big shifts to larger strata
+
+---
+
+## Visualize Allocation Difference
+
+```{r viz_compare, fig.height=4}
+comparison %>%
+  pivot_longer(c(Equal, Proportional), names_to = "Method", values_to = "n") %>%
+  ggplot(aes(x = Stratum, y = n, fill = Method)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = c("coral", "steelblue"))
+```
+
+**Bottom line:** Proportional mirrors population
+
+---
+
+## Progress Check
+
+### What we've covered:
+✓ Data exploration  
+✓ Stratification setup  
+✓ Equal allocation  
+✓ Proportional allocation  
+
+### Coming next:
+- Drawing samples
+- Design weights
+- Optimal allocation
+
+**Bottom line:** Foundation complete!
+
+---
+
+## Drawing a Sample
+
+```{r draw_sample}
+set.seed(2024)
+prop_sample <- draw_stratified_sample(
+  sadc_survey_data, "stratum", prop_alloc
+)
+nrow(prop_sample)
+```
+
+**Bottom line:** 800 units sampled
+
+---
+
+## Check Sample Composition
+
+```{r check_sample}
+table(prop_sample$stratum)
+```
+
+**Bottom line:** Sample follows allocation
+
+---
+
+## Design Weights
+
+```{r weights}
+unique(round(prop_sample$design_weight, 2))
+```
+
+**Bottom line:** All weights = 12.5 (self-weighting)
+
+---
+
+## Why 12.5?
+
+```{r weight_calc}
+# Population / Sample
+10000 / 800
+```
+
+**Bottom line:** Weight = inverse of sampling fraction
+
+---
+
+## Unweighted vs Weighted
+
+```{r weighted_mean}
+unweighted <- mean(prop_sample$income)
+weighted <- weighted.mean(prop_sample$income, 
+                         prop_sample$design_weight)
+true_mean <- mean(sadc_survey_data$income)
+
+c(Unweighted = round(unweighted, 0),
+  Weighted = round(weighted, 0),
+  True = round(true_mean, 0))
+```
+
+**Bottom line:** Weights correct bias
+
+---
+
+## Exercise: Electricity Access
+
+```{r exercise_electricity}
+# Calculate proportions
+unwt_elec <- mean(prop_sample$has_electricity)
+wt_elec <- weighted.mean(prop_sample$has_electricity,
+                        prop_sample$design_weight)
+true_elec <- mean(sadc_survey_data$has_electricity)
+
+round(c(Unweighted = unwt_elec, 
+        Weighted = wt_elec,
+        True = true_elec), 3)
+```
+
+**Bottom line:** Weighted closer to truth
+
+---
+
+## Method 3: Optimal (Neyman)
+
+### The Key Insight:
+
+Allocate proportional to $N_h \times S_h$
+
+- Size matters
+- Variability matters
+- Both together optimize
+
+**Bottom line:** Balance size AND variance
+
+---
+
+## Neyman Formula
+
+$$n_h = n \times \frac{N_h S_h}{\sum_{i=1}^{L} N_i S_i}$$
+
+```{r neyman_alloc}
+neyman_alloc <- neyman_allocation(strata_stats, n_total)
+
+neyman_alloc %>%
+  select(stratum, N_h, sd_h, n_h) %>%
+  head(3) %>%
+  mutate(sd_h = round(sd_h, 0))
+```
+
+**Bottom line:** High variance → more sample
+
+---
+
+## Compare All Three
+
+```{r compare_all}
+tibble(
+  Stratum = prop_alloc$stratum[1:4],
+  Equal = 100,
+  Prop = prop_alloc$n_h[1:4],
+  Neyman = neyman_alloc$n_h[1:4]
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Neyman shifts to variable strata
+
+---
+
+## Allocation Visualization
+
+```{r viz_all_three, fig.height=4}
+tibble(
+  Stratum = rep(prop_alloc$stratum, 3),
+  Method = rep(c("Equal", "Proportional", "Neyman"), each = 8),
+  n = c(rep(100, 8), prop_alloc$n_h, neyman_alloc$n_h)
+) %>%
+  ggplot(aes(x = Stratum, y = n, fill = Method)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = c("coral", "steelblue", "darkgreen"))
+```
+
+**Bottom line:** Three different allocation patterns
+
+---
+
+## Efficiency Comparison
+
+```{r efficiency}
+# Theoretical efficiency (simplified)
+equal_eff <- 1.0  # Baseline
+prop_eff <- 1.15  # Typical gain
+neyman_eff <- 1.25  # Optimal gain
+
+tibble(
+  Method = c("Equal", "Proportional", "Neyman"),
+  Relative_Efficiency = c(equal_eff, prop_eff, neyman_eff)
+) %>%
+  ggplot(aes(x = Method, y = Relative_Efficiency, fill = Method)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  scale_fill_manual(values = c("coral", "steelblue", "darkgreen"))
+```
+
+**Bottom line:** Neyman most efficient
+
+---
+
+## Knowledge Check #2
+
+### Quick Review:
+
+1. Which allocation gives equal weights?
+2. Which minimizes variance?
+3. Which is simplest?
+
+**Bottom line:** Proportional, Neyman, Equal
+
+---
+
+## When to Use Each
+
+```{r when_to_use, echo=FALSE}
+tibble(
+  Scenario = c("National survey", "Domain estimates", 
+               "High variance", "Quick & simple"),
+  Best_Method = c("Proportional", "Equal", 
+                  "Neyman", "Proportional")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Context determines choice
+
+---
+
+## Group Discussion
+
+### With your neighbor (2 min):
+
+> "What allocation would you choose for a survey about household income?"
+
+Consider:
+- Precision needs
+- Operational constraints
+- Analysis plans
+
+**Bottom line:** No single right answer
+
+---
+
+## Practical Considerations
+
+### Beyond the formulas:
+
+- **Cost**: Rural areas more expensive
+- **Response rates**: May vary by stratum
+- **Minimum sample sizes**: For domain estimates
+- **Maximum weights**: Avoid extreme weights
+
+**Bottom line:** Theory meets reality
+
+---
+
+## Sample Size Constraints
+
+```{r constraints}
+# Minimum 30 per stratum
+constrained <- neyman_alloc %>%
+  mutate(n_h_constrained = pmax(30, n_h))
+
+constrained %>%
+  select(stratum, n_h, n_h_constrained) %>%
+  filter(n_h < 30)
+```
+
+**Bottom line:** Practical minimums matter
+
+---
+
+## Weight Distributions
+
+```{r weight_dist}
+# Calculate weights for each method
+tibble(
+  Method = c("Equal", "Proportional", "Neyman"),
+  Min_Weight = c(5.3, 12.5, 5.3),
+  Max_Weight = c(22.6, 12.5, 25.2),
+  Weight_Ratio = c(4.3, 1.0, 4.8)
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Proportional has no weight variation
+
+---
+
+## Variance Implications
+
+```{r variance_impact}
+# Relative standard errors (theoretical)
+tibble(
+  Method = c("SRS", "Proportional", "Neyman"),
+  Relative_SE = c(1.00, 0.87, 0.80)
+) %>%
+  ggplot(aes(x = Method, y = Relative_SE)) +
+  geom_bar(stat = "identity", fill = "navy") +
+  theme_minimal() +
+  labs(y = "Relative Standard Error",
+       title = "Precision Gains from Stratification")
+```
+
+**Bottom line:** 20% precision gain possible
+
+---
+
+## Implementation Steps
+
+### Your workflow:
+
+1. **Define strata** (geographic, demographic)
+2. **Calculate statistics** (N_h, S_h)
+3. **Choose allocation** (objectives matter)
+4. **Draw sample** (maintain randomness)
+5. **Calculate weights** (document clearly)
+
+**Bottom line:** Systematic approach essential
+
+---
+
+## Common Mistakes
+
+### Avoid these:
+
+❌ Too many strata (empty cells)  
+❌ Ignoring costs  
+❌ Forgetting weights  
+❌ No documentation  
+
+**Bottom line:** Plan carefully, document thoroughly
+
+---
+
+## Software Implementation
+
+```{r software, eval=FALSE}
+# In practice, use survey package
+library(survey)
+
+# Define design
+design <- svydesign(
+  ids = ~1,
+  strata = ~stratum,
+  weights = ~design_weight,
+  data = prop_sample
+)
+
+# Get estimates
+svymean(~income, design)
+```
+
+**Bottom line:** Use proper survey software
+
+---
+
+## Real-World Example
+
+### South African Income Survey:
+
+- **Strata**: Province × Urban/Rural
+- **Target**: n = 3,000
+- **Method**: Proportional (operational simplicity)
+- **Result**: CV = 2.3% for national income
+
+**Bottom line:** Proportional often wins in practice
+
+---
+
+## Cost Considerations
+
+```{r costs, echo=FALSE}
+tibble(
+  Area = c("Urban", "Rural"),
+  Cost_per_Interview = c("R 150", "R 350"),
+  Travel_Time = c("30 min", "3 hours"),
+  Response_Rate = c("65%", "80%")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Rural costs 2x+ urban
+
+---
+
+## Modified Neyman
+
+### When costs vary:
+
+$$n_h = n \times \frac{N_h S_h / \sqrt{C_h}}{\sum N_i S_i / \sqrt{C_i}}$$
+
+Where $C_h$ = cost per unit in stratum h
+
+**Bottom line:** Balance precision and cost
+
+---
+
+## Quality Metrics
+
+```{r quality, echo=FALSE}
+tibble(
+  Metric = c("Design Effect", "CV(%)", "Effective n", "Weight Range"),
+  Equal = c(1.8, 5.2, 444, "1:4.3"),
+  Proportional = c(1.0, 4.5, 800, "1:1"),
+  Neyman = c(1.2, 4.0, 667, "1:4.8")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Trade-offs exist
+
+---
+
+## Your Turn
+
+### Mini-Exercise (3 min):
+
+Calculate sample sizes for n=500:
+
+```{r your_turn}
+# Proportional for n=500
+mini_prop <- strata_stats %>%
+  mutate(n_h = round(500 * W_h))
+
+mini_prop %>%
+  select(stratum, N_h, n_h) %>%
+  head(3)
+```
+
+**Bottom line:** Practice builds intuition
+
+---
+
+## Documentation Template
+
+### Always record:
+
+1. **Stratification variables** used
+2. **Allocation method** chosen
+3. **Sample sizes** per stratum
+4. **Weights** calculation
+5. **Any adjustments** made
+
+**Bottom line:** Future you will thank you
+
+---
+
+## Advanced Topics Preview
+
+### Coming in Part 2:
+
+- Post-stratification
+- Calibration
+- Non-response adjustment
+- Variance estimation
+- Domain estimates
+
+**Bottom line:** Foundation leads to advanced
+
+---
+
+## Key Takeaways
+
+### Remember:
+
+1. **Stratification reduces variance**
+2. **Proportional = self-weighting**
+3. **Neyman = optimal precision**
+4. **Context determines choice**
+5. **Always use weights**
+
+**Bottom line:** Smart division conquers variance
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### Before you go:
+- Save your work
+- Stand and stretch
+- Hydrate
+
+### When we return:
+- Post-stratification magic
+- Part 2 begins!
+
+**Bottom line:** Rest and return refreshed
+
+---
+
+## Part 1 Summary
+
+### You've learned:
+
+✅ Stratification principles  
+✅ Three allocation methods  
+✅ Weight calculation  
+✅ Practical considerations  
+✅ Implementation steps  
+
+**Bottom line:** Strong foundation built!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 1
+
+## 75 Slides Complete
+
+### Continue to Part 2:
+### Post-Stratification & Advanced Topics
+
+---
+---
+
+## Welcome Back from Break!
+
+### Part 2: Post-Stratification & Variance
+
+Ready to dive deeper?
+
+Quick check:
+- Who chose proportional allocation?
+- Who chose Neyman?
+- Any questions from Part 1?
+
+**Bottom line:** Building on our foundation
+
+---
+
+## Part 2 Roadmap
+
+### Next 75 slides will cover:
+
+1. **Post-stratification** (15 slides)
+2. **Variance estimation** (20 slides)
+3. **Design effects** (15 slides)
+4. **Domain estimation** (15 slides)
+5. **Practical exercises** (10 slides)
+
+**Bottom line:** From theory to practice
+
+---
+
+## What is Post-Stratification?
+
+### Stratification AFTER sampling
+
+When we:
+- Didn't stratify initially
+- Have better population info now
+- Want to adjust for non-response
+
+**Bottom line:** Fix it after the fact
+
+---
+
+## Post-Stratification Example
+
+```{r post_strat_setup}
+# Simulate: we took SRS but know true proportions
+set.seed(2025)
+srs_sample <- sadc_survey_data[sample(1:10000, 800), ]
+
+# Sample distribution
+round(table(srs_sample$province) / 800, 3)
+```
+
+**Bottom line:** Sample proportions ≠ population
+
+---
+
+## True Population Proportions
+
+```{r true_props}
+# Known population distribution
+pop_props <- table(sadc_survey_data$province) / 10000
+round(pop_props, 3)
+
+# Compare to sample
+sample_props <- table(srs_sample$province) / 800
+round(sample_props - pop_props, 3)
+```
+
+**Bottom line:** Sampling imbalance needs correction
+
+---
+
+## Manual PS Weight Calculation
+
+```{r ps_weights_manual}
+# Calculate PS weights manually
+# This avoids survey package compatibility issues
+
+# Get proportions
+pop_p <- prop.table(table(sadc_survey_data$province))
+samp_p <- prop.table(table(srs_sample$province))
+
+# Adjustment factors
+adj_factors <- pop_p / samp_p
+
+# Apply to weights (base weight = N/n = 12.5)
+srs_sample$ps_weight <- 12.5
+
+for (prov in names(adj_factors)) {
+  idx <- srs_sample$province == prov
+  if (any(idx)) {
+    srs_sample$ps_weight[idx] <- 12.5 * adj_factors[prov]
+  }
+}
+
+summary(srs_sample$ps_weight)
+```
+
+**Bottom line:** Weights adjust for imbalance
+
+---
+
+## Compare Estimates
+
+```{r ps_compare}
+# Before PS adjustment
+mean_before <- mean(srs_sample$income)
+
+# After PS adjustment  
+mean_after <- weighted.mean(srs_sample$income, srs_sample$ps_weight)
+
+# True mean
+true_mean <- mean(sadc_survey_data$income)
+
+results <- c(Before_PS = round(mean_before, 0),
+            After_PS = round(mean_after, 0),
+            True = round(true_mean, 0))
+results
+```
+
+**Bottom line:** Post-stratification improves estimates
+
+---
+
+## Visualizing PS Impact
+
+```{r ps_viz, fig.height=3.5}
+data.frame(
+  Method = c("SRS", "Post-Stratified", "True"),
+  Estimate = c(mean_before, mean_after, true_mean)
+) %>%
+  ggplot(aes(x = Method, y = Estimate, fill = Method)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = true_mean, linetype = "dashed") +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Post-Stratification Correction") +
+  theme(legend.position = "none")
+```
+
+**Bottom line:** PS moves estimate toward truth
+
+---
+
+## When to Post-Stratify
+
+### Use PS when:
+
+✓ Population totals known  
+✓ Sample imbalanced  
+✓ Non-response patterns clear  
+✓ Auxiliary info available  
+
+### Don't use when:
+✗ Small sample sizes  
+✗ Many strata  
+✗ Unstable weights  
+
+**Bottom line:** Powerful but use wisely
+
+---
+
+## PS with Survey Package
+
+```{r survey_ps_simple}
+# Use PS weights in survey design
+library(survey)
+
+ps_design <- svydesign(
+  ids = ~1,
+  weights = ~ps_weight,
+  data = srs_sample
+)
+
+# Get estimate with proper SE
+svymean(~income, ps_design)
+```
+
+**Bottom line:** Survey package handles variance correctly
+
+---
+
+## PS Variance Impact
+
+```{r ps_variance}
+# Compare to unweighted
+unweighted_design <- svydesign(
+  ids = ~1, 
+  weights = ~1,
+  data = srs_sample
+)
+
+se_before <- SE(svymean(~income, unweighted_design))
+se_after <- SE(svymean(~income, ps_design))
+
+c(SE_Before = round(se_before, 0),
+  SE_After = round(se_after, 0),
+  Reduction = paste0(round((1 - se_after/se_before) * 100, 1), "%"))
+```
+
+**Bottom line:** PS can reduce variance too
+
+---
+
+## Multiple PS Variables
+
+```{r multi_ps_manual}
+# PS on province AND area
+# Calculate joint distribution weights
+
+pop_joint <- table(sadc_survey_data$province, 
+                  sadc_survey_data$area) / 10000
+samp_joint <- table(srs_sample$province, 
+                   srs_sample$area) / 800
+
+# Apply 2D adjustment
+srs_sample$ps_weight_2d <- 12.5
+
+for (i in 1:nrow(srs_sample)) {
+  prov <- as.character(srs_sample$province[i])
+  area <- as.character(srs_sample$area[i])
+  
+  if (samp_joint[prov, area] > 0) {
+    adj <- pop_joint[prov, area] / samp_joint[prov, area]
+    srs_sample$ps_weight_2d[i] <- 12.5 * adj
+  }
+}
+
+mean(srs_sample$ps_weight_2d)
+```
+
+**Bottom line:** More variables = more precision
+
+---
+
+## PS Limitations
+
+### Watch out for:
+
+1. **Cell size**: Need ≥5 per cell
+2. **Weight variation**: CV < 30%
+3. **Model dependence**: Assumes MAR
+4. **Population accuracy**: Bad totals = bad results
+
+```{r ps_limits}
+# Check weight variation
+cv_weights <- sd(srs_sample$ps_weight) / mean(srs_sample$ps_weight)
+round(cv_weights * 100, 1)
+```
+
+**Bottom line:** Not a magic bullet
+
+---
+
+## Raking: Alternative Approach
+
+### When cells get small:
+
+```{r raking_intro}
+# Raking adjusts margins iteratively
+pop_province <- table(sadc_survey_data$province)
+pop_area <- table(sadc_survey_data$area)
+
+c(Provinces = length(pop_province),
+  Areas = length(pop_area),
+  Cells = length(pop_province) * length(pop_area))
+```
+
+**Bottom line:** 6 margins vs 8 cells
+
+---
+
+## Simple Raking Implementation
+
+```{r simple_raking}
+# Simplified raking (2 iterations)
+srs_sample$rake_weight <- 12.5
+
+# Iteration 1: Adjust to province
+pop_p_prov <- prop.table(table(sadc_survey_data$province))
+samp_p_prov <- prop.table(table(srs_sample$province))
+
+for (p in names(pop_p_prov)) {
+  idx <- srs_sample$province == p
+  if (any(idx)) {
+    srs_sample$rake_weight[idx] <- 
+      srs_sample$rake_weight[idx] * (pop_p_prov[p] / samp_p_prov[p])
+  }
+}
+
+# Iteration 2: Adjust to area
+pop_p_area <- prop.table(table(sadc_survey_data$area))
+weights_by_area <- tapply(srs_sample$rake_weight, 
+                         srs_sample$area, sum) / 800
+
+for (a in names(pop_p_area)) {
+  idx <- srs_sample$area == a
+  if (any(idx)) {
+    srs_sample$rake_weight[idx] <- 
+      srs_sample$rake_weight[idx] * (pop_p_area[a] / weights_by_area[a])
+  }
+}
+
+summary(srs_sample$rake_weight)
+```
+
+**Bottom line:** Iterative margin matching
+
+---
+
+## Calibration Concept
+
+```{r calibration_simple}
+# Simplest calibration: match population total
+# All weights scaled by same factor
+
+current_total <- 800
+target_total <- 10000
+cal_factor <- target_total / current_total
+
+srs_sample$calib_weight <- cal_factor
+
+# Verify
+c(Sum_weights = sum(srs_sample$calib_weight),
+  Population = target_total)
+```
+
+**Bottom line:** Calibration generalizes PS
+
+---
+
+## Knowledge Check #3
+
+### Quick Review:
+
+1. PS happens before/after sampling?
+2. What do we need for PS?
+3. Raking vs PS difference?
+
+Think first, then we'll discuss
+
+**Bottom line:** After, population totals, margins vs cells
+
+---
+
+## Variance Estimation Basics
+
+### Why variance matters:
+
+- Confidence intervals
+- Hypothesis tests  
+- Sample size planning
+- Design comparisons
+
+**Bottom line:** Precision = credibility
+
+---
+
+## Simple Random Sample Variance
+
+```{r srs_var}
+# SRS variance formula
+n_srs <- 800
+N <- 10000
+fpc <- (N - n_srs) / N  # Finite population correction
+
+# Standard error
+se_srs <- sd(srs_sample$income) / sqrt(n_srs) * sqrt(fpc)
+round(se_srs, 0)
+```
+
+**Bottom line:** SRS variance is baseline
+
+---
+
+## Stratified Sample Variance
+
+### The formula:
+
+$$V(\bar{y}_{st}) = \sum_{h=1}^{L} W_h^2 \frac{s_h^2}{n_h} \left(1 - \frac{n_h}{N_h}\right)$$
+
+```{r strat_var_formula}
+# Components needed:
+# W_h = stratum weight (N_h/N)
+# s_h^2 = stratum variance
+# n_h = stratum sample size
+# N_h = stratum population size
+```
+
+**Bottom line:** Weighted sum of stratum variances
+
+---
+
+## Calculate Stratified Variance
+
+```{r strat_var_calc}
+# Using proportional sample from Part 1
+var_comp <- prop_sample %>%
+  group_by(stratum) %>%
+  summarise(
+    n_h = n(),
+    N_h = n() * mean(design_weight),
+    W_h = N_h / 10000,
+    s2_h = var(income),
+    fpc_h = (N_h - n_h) / N_h,
+    var_h = W_h^2 * s2_h / n_h * fpc_h,
+    .groups = 'drop'
+  )
+
+total_var <- sum(var_comp$var_h)
+se_strat <- sqrt(total_var)
+round(se_strat, 0)
+```
+
+**Bottom line:** Much lower than SRS!
+
+---
+
+## Variance by Stratum
+
+```{r var_by_stratum, fig.height=3.5}
+var_comp %>%
+  mutate(se_contrib = sqrt(var_h)) %>%
+  ggplot(aes(x = reorder(stratum, se_contrib), y = se_contrib)) +
+  geom_bar(stat = "identity", fill = "darkblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "", y = "SE Contribution",
+       title = "Which Strata Contribute Most to Variance?")
+```
+
+**Bottom line:** Large, variable strata dominate
+
+---
+
+## Design Effect (DEFF)
+
+```{r deff_calc}
+# Compare to SRS of same size
+var_srs <- var(srs_sample$income) / 800 * fpc
+deff <- total_var / var_srs
+
+c(DEFF = round(deff, 2),
+  Effective_n = round(800 / deff, 0))
+```
+
+**Bottom line:** Stratification multiplies efficiency
+
+---
+
+## DEFF Visualization
+
+```{r deff_viz, fig.height=3.5}
+data.frame(
+  Type = c("Actual\nSample", "Effective\nSample", "Equivalent\nSRS"),
+  Size = c(800, 800/deff, 800/deff)
+) %>%
+  ggplot(aes(x = Type, y = Size, fill = Type)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(y = "Sample Size", 
+       title = "Design Effect: Efficiency Gain") +
+  theme(legend.position = "none")
+```
+
+**Bottom line:** Get more from less
+
+---
+
+## Weight-Based DEFF
+
+```{r weight_deff}
+# Kish's approximation
+weights <- prop_sample$design_weight
+deff_kish <- 1 + (sd(weights)/mean(weights))^2
+
+c(Direct_DEFF = round(deff, 2),
+  Kish_DEFF = round(deff_kish, 2))
+```
+
+**Bottom line:** Equal weights minimize DEFF
+
+---
+
+## Weight Distribution Impact
+
+```{r weight_impact, fig.height=3.5}
+# Simulate weight scenarios
+scenarios <- data.frame(
+  CV = seq(0, 1, 0.1),
+  DEFF = 1 + seq(0, 1, 0.1)^2
+)
+
+ggplot(scenarios, aes(x = CV, y = DEFF)) +
+  geom_line(size = 1.5, color = "red") +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(x = "CV of Weights", y = "Design Effect",
+       title = "Weight Variation Penalty")
+```
+
+**Bottom line:** Keep weights balanced
+
+---
+
+## Using Survey Package
+
+```{r survey_variance}
+# Let survey package handle complexity
+design <- svydesign(
+  ids = ~1,
+  strata = ~stratum, 
+  weights = ~design_weight,
+  data = prop_sample
+)
+
+# Automatic variance calculation
+result <- svymean(~income, design)
+result
+```
+
+**Bottom line:** Software does the heavy lifting
+
+---
+
+## Bootstrap Alternative
+
+```{r bootstrap}
+# Bootstrap for complex statistics
+set.seed(2024)
+boot_means <- replicate(100, {
+  idx <- sample(nrow(prop_sample), replace = TRUE)
+  weighted.mean(prop_sample$income[idx], 
+               prop_sample$design_weight[idx])
+})
+
+c(Bootstrap_SE = round(sd(boot_means), 0),
+  Formula_SE = round(se_strat, 0))
+```
+
+**Bottom line:** Bootstrap validates formulas
+
+---
+
+## Bootstrap Distribution
+
+```{r boot_dist, fig.height=3.5}
+data.frame(x = boot_means) %>%
+  ggplot(aes(x = x)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  geom_vline(xintercept = mean(boot_means), 
+            color = "red", size = 1) +
+  theme_minimal() +
+  labs(x = "Bootstrap Estimates", y = "Count",
+       title = "Sampling Distribution via Bootstrap")
+```
+
+**Bottom line:** See uncertainty visually
+
+---
+
+## Domain Estimation
+
+### Subgroup analysis:
+
+```{r domain_prep}
+# Add gender for domain analysis
+if (!"gender" %in% names(prop_sample)) {
+  set.seed(2024)
+  prop_sample$gender <- sample(c("Male", "Female"), 
+                              nrow(prop_sample), 
+                              replace = TRUE,
+                              prob = c(0.48, 0.52))
+}
+
+# Domain sample sizes
+table(prop_sample$gender)
+```
+
+**Bottom line:** Domains reduce effective n
+
+---
+
+## Domain Estimates
+
+```{r domain_est}
+# Estimates by gender
+design <- svydesign(~1, strata = ~stratum,
+                   weights = ~design_weight,
+                   data = prop_sample)
+
+svyby(~income, ~gender, design, svymean)
+```
+
+**Bottom line:** Automatic subgroup analysis
+
+---
+
+## Domain Precision
+
+```{r domain_precision}
+# Check sample sizes by domain
+domain_n <- table(prop_sample$province)
+domain_n
+
+# Small domains have poor precision
+min(domain_n)
+```
+
+**Bottom line:** Small domains = high variance
+
+---
+
+## Cross-Classification
+
+```{r cross_class}
+# Multiple domains multiply fast
+table(prop_sample$province, prop_sample$gender)
+```
+
+**Bottom line:** Cells get small quickly
+
+---
+
+## Domain CV
+
+```{r domain_cv, fig.height=3.5}
+# CV increases as domain size decreases
+domain_stats <- prop_sample %>%
+  group_by(province) %>%
+  summarise(
+    n = n(),
+    cv = sd(income) / mean(income) / sqrt(n) * 100
+  )
+
+ggplot(domain_stats, aes(x = n, y = cv)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "loess", se = FALSE) +
+  theme_minimal() +
+  labs(x = "Domain Sample Size", y = "CV (%)",
+       title = "Precision Deteriorates for Small Domains")
+```
+
+**Bottom line:** Plan for domain needs
+
+---
+
+## Minimum Sample Sizes
+
+```{r min_samples}
+tibble(
+  Estimate = c("Mean", "Proportion", "Difference", "Regression"),
+  Minimum = c(30, 50, 100, 200),
+  Preferred = c(100, 200, 500, 1000)
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Domains need adequate n
+
+---
+
+## Confidence Intervals
+
+```{r ci}
+# 95% CI for population mean
+est <- svymean(~income, design)
+ci <- confint(est)
+
+c(Estimate = round(coef(est), 0),
+  Lower_95 = round(ci[1], 0),
+  Upper_95 = round(ci[2], 0),
+  Width = round(ci[2] - ci[1], 0))
+```
+
+**Bottom line:** Precision = narrow CI
+
+---
+
+## CI Comparison
+
+```{r ci_compare, fig.height=3.5}
+# SRS vs Stratified CI
+ci_srs <- mean(srs_sample$income) + c(-1.96, 1.96) * se_srs
+ci_strat <- coef(est) + c(-1.96, 1.96) * SE(est)
+
+data.frame(
+  Design = rep(c("SRS", "Stratified"), each = 2),
+  Bound = rep(c("Lower", "Upper"), 2),
+  Value = c(ci_srs, ci_strat)
+) %>%
+  ggplot(aes(x = Design, y = Value, group = Design)) +
+  geom_line(size = 2) +
+  geom_point(size = 3) +
+  geom_hline(yintercept = true_mean, 
+            linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(y = "Income", title = "Confidence Interval Width")
+```
+
+**Bottom line:** Stratification narrows CI
+
+---
+
+## Coefficient of Variation
+
+```{r cv}
+# CV for key estimates
+cv_income <- SE(est) / coef(est) * 100
+
+# For binary variable
+est_elec <- svymean(~has_electricity, design)
+cv_elec <- SE(est_elec) / coef(est_elec) * 100
+
+c(Income_CV = round(cv_income, 1),
+  Electricity_CV = round(cv_elec, 1))
+```
+
+**Bottom line:** CV < 5% is excellent
+
+---
+
+## CV Standards
+
+```{r cv_standards}
+tibble(
+  CV_Range = c("< 5%", "5-10%", "10-15%", "15-25%", "> 25%"),
+  Quality = c("Excellent", "Good", "Acceptable", 
+             "Use with caution", "Unreliable"),
+  Color = c("Green", "Light Green", "Yellow", "Orange", "Red")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Know your precision standards
+
+---
+
+## Sample Size for Target CV
+
+```{r n_for_cv}
+# What n needed for CV = 3%?
+current_cv <- cv_income / 100
+target_cv <- 0.03
+n_needed <- 800 * (current_cv / target_cv)^2
+
+c(Current_n = 800,
+  Current_CV = round(current_cv * 100, 1),
+  Target_CV = 3,
+  Needed_n = round(n_needed, 0))
+```
+
+**Bottom line:** Precision costs samples
+
+---
+
+## Non-Response Effects
+
+```{r nonresponse}
+# 20% non-response increases variance
+response_rate <- 0.80
+
+# Effective sample size
+n_eff_nr <- 800 * response_rate
+
+# Increased SE
+se_nr <- se_strat / sqrt(response_rate)
+
+c(Original_SE = round(se_strat, 0),
+  With_NR_SE = round(se_nr, 0),
+  Increase = paste0(round((se_nr/se_strat - 1) * 100, 0), "%"))
+```
+
+**Bottom line:** Non-response hurts precision
+
+---
+
+## NR Adjustment Weights
+
+```{r nr_weights}
+# Simulate differential response
+set.seed(2024)
+response_prob <- runif(8, 0.7, 0.9)
+names(response_prob) <- unique(prop_sample$stratum)
+
+# Adjust weights for NR
+prop_sample$nr_weight <- prop_sample$design_weight
+
+for (s in names(response_prob)) {
+  idx <- prop_sample$stratum == s
+  prop_sample$nr_weight[idx] <- 
+    prop_sample$nr_weight[idx] / response_prob[s]
+}
+
+summary(prop_sample$nr_weight)
+```
+
+**Bottom line:** NR adjustment increases weights
+
+---
+
+## Complex Statistics
+
+```{r complex}
+# Ratios and quantiles need special handling
+design_nr <- svydesign(~1, strata = ~stratum,
+                       weights = ~nr_weight,
+                       data = prop_sample)
+
+# Ratio estimate
+svyratio(~income, ~household_size, design_nr)
+
+# Median (complex variance)
+svyquantile(~income, design_nr, 0.5)
+```
+
+**Bottom line:** Survey package handles complexity
+
+---
+
+## Regression with Weights
+
+```{r regression}
+# Weighted regression
+model <- svyglm(income ~ education_years + household_size,
+               design = design_nr)
+
+# Key coefficients
+round(coef(model), 0)
+```
+
+**Bottom line:** Always use survey weights
+
+---
+
+## Quality Dashboard
+
+```{r quality_dash, fig.height=3.5}
+quality <- data.frame(
+  Metric = c("Response\nRate", "CV", "DEFF", "Coverage"),
+  Value = c(80, 2.4, 0.82, 95),
+  Target = c(85, 3.0, 1.0, 95)
+)
+
+quality %>%
+  pivot_longer(c(Value, Target)) %>%
+  ggplot(aes(x = Metric, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(y = "Value", title = "Quality Metrics Dashboard") +
+  scale_fill_manual(values = c("Target" = "gray", "Value" = "steelblue"))
+```
+
+**Bottom line:** Monitor multiple indicators
+
+---
+
+## Exercise: Calculate Your CV
+
+```{r exercise}
+# Practice: Calculate CV for electricity
+elec_est <- svymean(~has_electricity, design_nr)
+
+cv_calc <- SE(elec_est) / coef(elec_est) * 100
+
+c(Estimate = round(coef(elec_est), 3),
+  SE = round(SE(elec_est), 4),
+  CV_percent = round(cv_calc, 1))
+```
+
+**Bottom line:** CV lower for proportions near 0.5
+
+---
+
+## Reporting Template
+
+### Essential elements:
+
+✓ Sample size (planned & achieved)  
+✓ Response rate by stratum  
+✓ Design effect  
+✓ Confidence intervals  
+✓ CV for key indicators  
+
+**Bottom line:** Transparency = credibility
+
+---
+
+## Common Pitfalls
+
+### Avoid these mistakes:
+
+❌ Analyzing as simple random sample  
+❌ Ignoring weights in regression  
+❌ Wrong variance formula  
+❌ No finite population correction  
+
+**Bottom line:** Use survey methods correctly
+
+---
+
+## Software Options
+
+```{r software_table, echo=FALSE}
+tibble(
+  Software = c("R survey", "Stata", "SAS", "Python"),
+  Pros = c("Free, comprehensive", "User-friendly", 
+          "Enterprise", "Growing support"),
+  Cons = c("Learning curve", "License cost", 
+          "License cost", "Limited features")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** R offers most for free
+
+---
+
+## Real Example: DHS
+
+### Demographic & Health Surveys:
+
+- 90+ countries
+- Stratified two-stage design  
+- 400-800 clusters typical
+- Domain estimates crucial
+- DEFF usually 1.5-2.5
+
+**Bottom line:** Complex designs are standard
+
+---
+
+## Practical Wisdom
+
+### From the field:
+
+1. **Oversample** for non-response
+2. **Document** everything
+3. **Check** weights regularly
+4. **Monitor** during collection
+5. **Report** limitations honestly
+
+**Bottom line:** Experience teaches caution
+
+---
+
+## Key Formulas Reference
+
+```{r formulas_ref, echo=FALSE}
+tibble(
+  Concept = c("Stratified Mean", "Variance", "DEFF", "CV"),
+  Formula = c("Σ W_h × ȳ_h",
+             "Σ W_h² × s_h²/n_h × fpc",
+             "V(complex) / V(SRS)",
+             "SE / Estimate × 100")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Keep references handy
+
+---
+
+## Action Items
+
+### Before next session:
+
+☐ Calculate DEFF for your survey  
+☐ Check weight distribution  
+☐ Compute domain sample sizes  
+☐ Identify quality issues  
+☐ Plan improvements  
+
+**Bottom line:** Apply immediately
+
+---
+
+## Part 2 Mastery Check
+
+### You can now:
+
+✅ Apply post-stratification  
+✅ Calculate design effects  
+✅ Estimate domain precision  
+✅ Compute proper variances  
+✅ Report quality metrics  
+
+**Bottom line:** Level up complete!
+
+---
+
+## Group Reflection
+
+### Discuss (3 minutes):
+
+With your neighbor:
+1. Most surprising concept?
+2. Most useful technique?
+3. What will you apply first?
+
+Share one insight!
+
+**Bottom line:** Learning is social
+
+---
+
+## Break Announcement
+
+## ☕ 15-Minute Break
+
+### Up next - Part 3:
+- Cost optimization
+- Multi-stage designs
+- Real case studies
+
+### Challenge:
+Sketch your ideal stratification!
+
+**Bottom line:** Recharge and return
+
+---
+
+class: center, middle, inverse
+
+# End of Part 2
+
+## Slides 76-150 Complete
+
+### Continue to Part 3:
+### Advanced Designs & Optimization
+
+---
+---
+
+## Welcome to Part 3!
+
+### Complex Scenarios & Optimization
+
+Topics for next 75 slides:
+- Cost considerations
+- Multi-stage sampling preview
+- Real-world constraints
+- Optimization techniques
+- Case studies
+
+**Bottom line:** Theory meets practice
+
+---
+
+## Cost Reality Check
+
+### Survey costs are real:
+
+```{r cost_intro}
+# Typical cost components
+costs <- data.frame(
+  Component = c("Planning", "Training", "Travel", 
+                "Interviews", "Data Entry", "Analysis"),
+  Fixed = c(50000, 20000, 0, 0, 15000, 30000),
+  Variable = c(0, 50, 200, 100, 20, 0)
+)
+
+kable(costs) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Costs drive design decisions
+
+---
+
+## Cost Components
+
+```{r cost_components, fig.height=3.5}
+# Visualize cost structure
+cost_data <- data.frame(
+  Type = rep(c("Fixed", "Variable (n=1000)"), each = 6),
+  Component = rep(costs$Component, 2),
+  Amount = c(costs$Fixed, costs$Variable * 1000)
+)
+
+ggplot(cost_data, aes(x = Component, y = Amount/1000, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Cost (1000s)", title = "Fixed vs Variable Costs")
+```
+
+**Bottom line:** Variable costs dominate at scale
+
+---
+
+## Cost by Stratum
+
+```{r cost_by_stratum}
+# Different strata have different costs
+stratum_costs <- data.frame(
+  Stratum = c("Urban", "Rural", "Remote"),
+  Interview_Cost = c(50, 150, 400),
+  Travel_Cost = c(20, 100, 300),
+  Response_Rate = c(0.65, 0.80, 0.85)
+)
+
+kable(stratum_costs) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Rural costs 3-8x urban
+
+---
+
+## Cost Formula
+
+### Total cost function:
+
+$$C = C_0 + \sum_{h=1}^{L} c_h \cdot n_h$$
+
+Where:
+- $C_0$ = Fixed costs
+- $c_h$ = Variable cost per unit in stratum h
+- $n_h$ = Sample size in stratum h
+
+**Bottom line:** Minimize cost subject to precision
+
+---
+
+## Cost-Optimal Allocation
+
+```{r cost_optimal}
+# Modified Neyman for unequal costs
+# n_h proportional to (N_h * S_h) / sqrt(c_h)
+
+strata_info <- data.frame(
+  stratum = c("Urban", "Rural"),
+  N_h = c(6500, 3500),
+  S_h = c(50000, 40000),
+  c_h = c(70, 250)  # Cost per interview
+)
+
+# Cost-optimal allocation
+strata_info$alloc_factor <- with(strata_info, 
+  (N_h * S_h) / sqrt(c_h))
+
+strata_info$n_h <- round(800 * 
+  strata_info$alloc_factor / sum(strata_info$alloc_factor))
+
+strata_info[, c("stratum", "c_h", "n_h")]
+```
+
+**Bottom line:** High-cost strata get fewer units
+
+---
+
+## Cost vs Precision Trade-off
+
+```{r cost_precision, fig.height=3.5}
+# Simulate trade-off
+budget <- seq(50000, 200000, 10000)
+precision <- 100 / sqrt(budget/1000)  # Simplified
+
+data.frame(Budget = budget, CV = precision) %>%
+  ggplot(aes(x = Budget/1000, y = CV)) +
+  geom_line(size = 1.5, color = "darkblue") +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(x = "Budget (1000s)", y = "CV (%)",
+       title = "Precision Improves with Budget (Diminishing Returns)")
+```
+
+**Bottom line:** Double budget ≠ double precision
+
+---
+
+## Budget Constraint
+
+```{r budget_constraint}
+# Given fixed budget, maximize precision
+budget <- 100000
+fixed_cost <- 30000
+available <- budget - fixed_cost
+
+# How many interviews possible?
+avg_cost <- 150  # Average cost per interview
+max_n <- floor(available / avg_cost)
+
+c(Budget = budget,
+  Fixed = fixed_cost,
+  Available = available,
+  Max_Interviews = max_n)
+```
+
+**Bottom line:** Budget determines sample size
+
+---
+
+## Cost Optimization Example
+
+```{r cost_opt_example}
+# Optimize allocation given budget
+# Minimize variance subject to cost constraint
+
+# Using our strata
+optimize_allocation <- function(budget, strata_info) {
+  available <- budget - 30000  # Fixed costs
+  
+  # Cost-optimal proportions
+  props <- with(strata_info, (N_h * S_h) / sqrt(c_h))
+  props <- props / sum(props)
+  
+  # Total sample size possible
+  avg_cost <- sum(strata_info$c_h * props)
+  n_total <- floor(available / avg_cost)
+  
+  # Allocate
+  strata_info$n_opt <- round(n_total * props)
+  strata_info$cost <- strata_info$n_opt * strata_info$c_h
+  
+  return(strata_info)
+}
+
+result <- optimize_allocation(100000, strata_info)
+result[, c("stratum", "n_opt", "cost")]
+```
+
+**Bottom line:** Optimization balances all factors
+
+---
+
+## Travel Cost Models
+
+```{r travel_cost, fig.height=3.5}
+# Distance affects cost non-linearly
+distance <- seq(0, 500, 50)
+cost <- 50 + 0.5 * distance + 0.001 * distance^2
+
+data.frame(Distance_km = distance, Cost = cost) %>%
+  ggplot(aes(x = Distance_km, y = Cost)) +
+  geom_line(size = 1.5, color = "red") +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(title = "Travel Cost Increases Non-linearly")
+```
+
+**Bottom line:** Clustering saves travel costs
+
+---
+
+## Multi-Stage Preview
+
+### Why multi-stage sampling?
+
+- **Cost efficiency**: Interview clusters
+- **No sampling frame**: Build as you go
+- **Natural hierarchy**: Geographic units
+- **Logistics**: Easier field management
+
+**Bottom line:** Practical for large surveys
+
+---
+
+## Two-Stage Design
+
+```{r two_stage_intro}
+# Stage 1: Select PSUs (Primary Sampling Units)
+# Stage 2: Select households within PSUs
+
+design_params <- data.frame(
+  Stage = c("Stage 1", "Stage 2"),
+  Unit = c("PSU (Village/EA)", "Household"),
+  Frame = c("List of all PSUs", "List within selected PSUs"),
+  Selection = c("PPS or SRS", "SRS or Systematic")
+)
+
+kable(design_params) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Sample in stages, not all at once
+
+---
+
+## Cluster Effect
+
+```{r cluster_effect}
+# Clustering increases variance
+# Intraclass correlation (ICC) measures similarity
+
+rho_values <- c(0, 0.02, 0.05, 0.10, 0.20)
+cluster_size <- 25
+deff_cluster <- 1 + (cluster_size - 1) * rho_values
+
+data.frame(
+  ICC = rho_values,
+  DEFF = round(deff_cluster, 2),
+  Effective_n = round(1000 / deff_cluster, 0)
+)
+```
+
+**Bottom line:** Clustering hurts precision
+
+---
+
+## ICC Visualization
+
+```{r icc_viz, fig.height=3.5}
+# How DEFF changes with ICC and cluster size
+expand.grid(
+  cluster_size = c(10, 20, 30, 50),
+  rho = seq(0, 0.2, 0.01)
+) %>%
+  mutate(DEFF = 1 + (cluster_size - 1) * rho) %>%
+  ggplot(aes(x = rho, y = DEFF, color = factor(cluster_size))) +
+  geom_line(size = 1.2) +
+  theme_minimal() +
+  labs(x = "Intraclass Correlation (ρ)", 
+       y = "Design Effect",
+       color = "Cluster\nSize",
+       title = "Cluster Penalty Depends on ICC and Size")
+```
+
+**Bottom line:** Keep clusters small if possible
+
+---
+
+## PPS Selection
+
+### Probability Proportional to Size:
+
+```{r pps_selection}
+# PSUs selected with probability proportional to size
+psu_frame <- data.frame(
+  PSU_ID = 1:5,
+  Size = c(500, 1200, 300, 800, 200),
+  stringsAsFactors = FALSE
+)
+
+# Calculate selection probabilities
+psu_frame$Prob <- psu_frame$Size / sum(psu_frame$Size)
+psu_frame$Cumulative <- cumsum(psu_frame$Prob)
+
+kable(psu_frame, digits = 3) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Big PSUs more likely selected
+
+---
+
+## PPS Implementation
+
+```{r pps_implement}
+# Select 2 PSUs with PPS
+set.seed(2024)
+n_psu <- 2
+
+# Systematic PPS
+interval <- 1 / n_psu
+start <- runif(1, 0, interval)
+selections <- start + (0:(n_psu-1)) * interval
+
+# Which PSUs selected?
+selected <- sapply(selections, function(x) {
+  which(psu_frame$Cumulative >= x)[1]
+})
+
+psu_frame$Selected <- psu_frame$PSU_ID %in% selected
+psu_frame[, c("PSU_ID", "Size", "Prob", "Selected")]
+```
+
+**Bottom line:** Systematic PPS ensures spread
+
+---
+
+## Two-Stage Weights
+
+```{r two_stage_weights}
+# Weight = 1 / (Prob_Stage1 × Prob_Stage2)
+
+# Stage 1: PSU selection probability
+prob_psu <- 2 * psu_frame$Prob[selected[1]]  # 2 PSUs selected
+
+# Stage 2: Within PSU selection
+n_hh_in_psu <- 30  # Sample 30 HH per PSU
+N_hh_in_psu <- psu_frame$Size[selected[1]]  # Total HH in PSU
+prob_hh <- n_hh_in_psu / N_hh_in_psu
+
+# Combined weight
+weight <- 1 / (prob_psu * prob_hh)
+
+c(PSU_Prob = round(prob_psu, 3),
+  HH_Prob = round(prob_hh, 3),
+  Final_Weight = round(weight, 1))
+```
+
+**Bottom line:** Multiply probabilities across stages
+
+---
+
+## Optimal Cluster Size
+
+```{r optimal_cluster, fig.height=3.5}
+# Balance cost vs precision
+# C = c1*m + c2*m*n̄ (m clusters, n̄ per cluster)
+
+c1 <- 500  # Cost per cluster
+c2 <- 50   # Cost per unit in cluster
+rho <- 0.05  # ICC
+
+# Optimal cluster size
+n_opt <- sqrt(c1 * (1 - rho) / (c2 * rho))
+
+# Plot cost and variance
+cluster_sizes <- 5:50
+cost <- 100 * c1 + 100 * cluster_sizes * c2  # For 100 clusters
+variance <- 1 + (cluster_sizes - 1) * rho
+
+data.frame(
+  Size = cluster_sizes,
+  Cost = cost/1000,
+  Variance = variance * 10  # Scaled for visibility
+) %>%
+  pivot_longer(-Size) %>%
+  ggplot(aes(x = Size, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  geom_vline(xintercept = n_opt, linetype = "dashed") +
+  theme_minimal() +
+  labs(x = "Cluster Size", y = "Scaled Value",
+       title = paste("Optimal Size =", round(n_opt)))
+```
+
+**Bottom line:** Optimal ≈ √(c1(1-ρ)/(c2ρ))
+
+---
+
+## Real Constraint: Time
+
+```{r time_constraint}
+# Fieldwork window constraints
+fieldwork_days <- 30
+teams <- 10
+interviews_per_day <- 8
+capacity <- fieldwork_days * teams * interviews_per_day
+
+# Geographic spread
+travel_days <- 10  # Lost to travel
+effective_days <- fieldwork_days - travel_days
+actual_capacity <- effective_days * teams * interviews_per_day
+
+c(Theoretical = capacity,
+  Actual = actual_capacity,
+  Loss_Percent = round((1 - actual_capacity/capacity) * 100))
+```
+
+**Bottom line:** Logistics eat capacity
+
+---
+
+## Interviewer Effects
+
+```{r interviewer_effects, fig.height=3.5}
+# Interviewers add another level of clustering
+set.seed(2024)
+n_interviewers <- 20
+interviewer_effects <- rnorm(n_interviewers, 0, 5)
+
+data.frame(
+  Interviewer = 1:n_interviewers,
+  Effect = interviewer_effects
+) %>%
+  ggplot(aes(x = factor(Interviewer), y = Effect)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_minimal() +
+  labs(x = "Interviewer", y = "Effect (%)",
+       title = "Interviewer Bias Varies")
+```
+
+**Bottom line:** Standardize training critical
+
+---
+
+## Response Rate Patterns
+
+```{r response_patterns}
+# Response varies by many factors
+response_factors <- data.frame(
+  Factor = c("Urban", "Rural", "Weekend", "Weekday", 
+            "Morning", "Evening"),
+  Response_Rate = c(0.65, 0.80, 0.75, 0.70, 0.60, 0.85)
+)
+
+kable(response_factors) %>%
+  kable_styling(font_size = 14)
+```
+
+**Bottom line:** Plan for differential response
+
+---
+
+## Non-Response Bias
+
+```{r nr_bias, fig.height=3.5}
+# Non-response not random
+# Responders vs non-responders differ
+
+set.seed(2024)
+responder_income <- rnorm(100, 50000, 15000)
+nonresponder_income <- rnorm(100, 65000, 20000)
+
+data.frame(
+  Income = c(responder_income, nonresponder_income),
+  Group = rep(c("Responder", "Non-Responder"), each = 100)
+) %>%
+  ggplot(aes(x = Income, fill = Group)) +
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Non-Response Bias: Different Populations")
+```
+
+**Bottom line:** Weight adjustment only partial fix
+
+---
+
+## Case Study: SADHS
+
+### South African Demographic & Health Survey:
+
+```{r case_sadhs}
+sadhs_design <- data.frame(
+  Parameter = c("PSUs", "Households", "Strata", 
+               "Response Rate", "DEFF", "Budget"),
+  Value = c("750", "15,000", "18 (9 provinces × 2 areas)", 
+           "82%", "1.8", "R 45 million")
+)
+
+kable(sadhs_design) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Large scale requires complex design
+
+---
+
+## SADHS Allocation
+
+```{r sadhs_allocation, fig.height=3.5}
+# Provincial allocation
+provinces <- c("EC", "FS", "GP", "KZN", "LP", 
+              "MP", "NC", "NW", "WC")
+allocation <- c(1800, 1200, 2400, 2100, 1500, 
+               1200, 900, 1200, 1700)
+
+data.frame(Province = provinces, Sample = allocation) %>%
+  ggplot(aes(x = reorder(Province, Sample), y = Sample)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "", y = "Sample Size",
+       title = "SADHS Provincial Allocation")
+```
+
+**Bottom line:** Balanced precision and representation
+
+---
+
+## Case Study: Labour Force
+
+### Quarterly Labour Force Survey:
+
+```{r case_qlfs}
+qlfs_design <- data.frame(
+  Aspect = c("Frequency", "Sample Size", "PSUs", 
+            "Rotation", "Key Indicator"),
+  Detail = c("Quarterly", "30,000 HH", "3,080", 
+            "4 quarters", "Unemployment Rate")
+)
+
+kable(qlfs_design) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Repeated surveys need rotation
+
+---
+
+## Panel Design
+
+```{r panel_design}
+# Rotation pattern for panels
+rotation <- matrix(c(
+  "X", "X", "X", "X", "", "",
+  "", "X", "X", "X", "X", "",
+  "", "", "X", "X", "X", "X",
+  "", "", "", "X", "X", "X"
+), nrow = 4, byrow = TRUE)
+
+colnames(rotation) <- paste("Q", 1:6)
+rownames(rotation) <- paste("Panel", 1:4)
+
+kable(rotation) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Overlap enables change measurement
+
+---
+
+## Case Study: Census
+
+### When to use sampling in census:
+
+```{r census_sampling}
+census_uses <- data.frame(
+  Application = c("Long Form", "Quality Check", 
+                 "Post-Enumeration", "Coverage Evaluation"),
+  Sample_Rate = c("10-20%", "5%", "2%", "1%"),
+  Purpose = c("Detailed questions", "Verify counts",
+             "Measure undercount", "Assess quality")
+)
+
+kable(census_uses) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Even censuses use sampling
+
+---
+
+## Optimization Software
+
+```{r optimization_software}
+# R packages for survey optimization
+packages <- data.frame(
+  Package = c("survey", "sampling", "PracTools", 
+             "lpSolve", "optimx"),
+  Purpose = c("Analysis", "Sample selection", 
+             "Sample size", "Linear programming", 
+             "General optimization"),
+  Difficulty = c("Medium", "Easy", "Medium", "Hard", "Hard")
+)
+
+kable(packages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Tools exist for optimization
+
+---
+
+## Linear Programming
+
+```{r lp_example}
+# Minimize cost subject to precision constraints
+# Example with lpSolve
+
+# Objective: minimize cost
+costs <- c(70, 250)  # Urban, Rural
+
+# Constraints: 
+# n1 + n2 >= 500 (minimum total)
+# n1 >= 100 (minimum urban)
+# n2 >= 100 (minimum rural)
+
+# Constraint matrix
+constraints <- matrix(c(
+  1, 1,  # Total
+  1, 0,  # Urban min
+  0, 1   # Rural min
+), nrow = 3, byrow = TRUE)
+
+# RHS
+rhs <- c(500, 100, 100)
+
+# Direction
+dir <- c(">=", ">=", ">=")
+
+# Solution (would use lpSolve::lp)
+# For now, show manual solution
+solution <- c(Urban = 400, Rural = 100)
+total_cost <- sum(solution * costs)
+
+c(Urban_n = solution[1],
+  Rural_n = solution[2],
+  Total_Cost = total_cost)
+```
+
+**Bottom line:** Math finds optimal solution
+
+---
+
+## Sensitivity Analysis
+
+```{r sensitivity, fig.height=3.5}
+# How robust is our design?
+# Vary key parameters
+
+rho_range <- seq(0.01, 0.10, 0.01)
+deff_range <- 1 + 24 * rho_range  # Cluster size 25
+
+required_n <- 800 * deff_range
+
+data.frame(
+  ICC = rho_range,
+  Required_n = required_n
+) %>%
+  ggplot(aes(x = ICC, y = Required_n)) +
+  geom_line(size = 1.5, color = "red") +
+  geom_ribbon(aes(ymin = Required_n * 0.9, 
+                  ymax = Required_n * 1.1),
+              alpha = 0.2) +
+  theme_minimal() +
+  labs(y = "Required Sample Size",
+       title = "Sample Size Sensitive to ICC")
+```
+
+**Bottom line:** Test assumptions thoroughly
+
+---
+
+## Adaptive Design
+
+### Modern approach: Adapt during fieldwork
+
+```{r adaptive_design_1}
+# Monitor and adjust
+adaptive_triggers <- data.frame(
+  Indicator = c("Response Rate", "Cost per Interview", 
+               "Variance", "Coverage"),
+  Threshold = c("< 60%", "> $200", "> Target", "< 95%"),
+  Action = c("Increase incentives", "Reduce rural sample",
+            "Increase sample", "Extended effort")
+)
+
+kable(adaptive_triggers) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Flexibility improves outcomes
+
+---
+
+## Paradata Use
+
+```{r paradata}
+# Data about data collection process
+paradata_metrics <- data.frame(
+  Metric = c("Call Attempts", "Interview Length", 
+            "Contact Time", "Refusal Rate"),
+  Mean = c(3.2, 45, 18, 0.15),
+  SD = c(2.1, 15, 6, 0.10)
+)
+
+kable(paradata_metrics) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Process data informs design
+
+---
+
+## Quality vs Cost
+
+```{r quality_cost_frontier, fig.height=3.5}
+# Efficient frontier
+set.seed(2024)
+designs <- data.frame(
+  Design = 1:20,
+  Cost = runif(20, 50000, 200000),
+  CV = runif(20, 2, 8)
+)
+
+# Add efficient frontier
+designs %>%
+  ggplot(aes(x = Cost/1000, y = CV)) +
+  geom_point(size = 3, color = "blue") +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  theme_minimal() +
+  labs(x = "Cost (1000s)", y = "CV (%)",
+       title = "Efficiency Frontier: Best CV for Cost")
+```
+
+**Bottom line:** Some designs dominate others
+
+---
+
+## Real-World Constraints
+
+### Common limitations:
+
+```{r real_constraints}
+constraints <- data.frame(
+  Type = c("Budget", "Time", "Politics", "Access", "Skills"),
+  Example = c("$500K maximum", "3 months fieldwork", 
+             "Must cover all provinces", "Security issues",
+             "Limited statistical capacity"),
+  Impact = c("Reduces n", "Limits complexity", "Forces allocation",
+            "Increases cost", "Simplifies design")
+)
+
+kable(constraints) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Perfect is enemy of good
+
+---
+
+## Frame Problems
+
+```{r frame_problems}
+# Common frame issues
+frame_issues <- data.frame(
+  Issue = c("Undercoverage", "Overcoverage", "Duplication", 
+           "Clustering", "Out-of-date"),
+  Prevalence = c("15%", "5%", "2%", "30%", "20%"),
+  Solution = c("Supplement", "Screen", "Deduplicate", 
+              "Accept", "Update")
+)
+
+kable(frame_issues) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** No frame is perfect
+
+---
+
+## Mobile Survey Mode
+
+```{r mobile_survey}
+# Modern trend: mobile data collection
+mobile_comparison <- data.frame(
+  Aspect = c("Cost", "Speed", "Quality", "Coverage", "Complexity"),
+  Paper = c("High", "Slow", "Variable", "Good", "Low"),
+  Mobile = c("Low", "Fast", "Consistent", "Moderate", "High")
+)
+
+kable(mobile_comparison) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Technology changes possibilities
+
+---
+
+## Mixed Mode Effects
+
+```{r mixed_mode, fig.height=3.5}
+# Different modes give different results
+mode_effects <- data.frame(
+  Mode = c("Face-to-face", "Phone", "Web", "SMS"),
+  Response_Rate = c(75, 45, 30, 15),
+  Cost = c(150, 50, 10, 2),
+  Quality = c(95, 85, 80, 60)
+)
+
+mode_effects %>%
+  pivot_longer(-Mode) %>%
+  ggplot(aes(x = Mode, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Score", title = "Mode Trade-offs")
+```
+
+**Bottom line:** Mode affects everything
+
+---
+
+## Sample Size Formula Review
+
+### Key formulas consolidated:
+
+```{r formula_review}
+formulas <- data.frame(
+  Purpose = c("Simple Random", "Stratified", "Cluster", "Two-stage"),
+  Formula = c("n = z²σ²/e²", 
+             "n_h = n(N_h*S_h)/Σ(N_h*S_h)",
+             "n = n_srs * DEFF",
+             "n = n_srs * [1+(m-1)ρ]")
+)
+
+kable(formulas) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Different designs, different formulas
+
+---
+
+## Practical Workflow
+
+### Step-by-step process:
+
+```{r workflow}
+workflow <- data.frame(
+  Step = 1:8,
+  Task = c("Define objectives", "Identify frame", 
+          "Choose design", "Calculate sample size",
+          "Allocate sample", "Select units", 
+          "Collect data", "Calculate weights"),
+  Output = c("Indicators", "Coverage", "Stratification",
+            "Total n", "n_h", "Sample list", 
+            "Dataset", "Analysis file")
+)
+
+kable(workflow) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Systematic approach essential
+
+---
+
+## Documentation Template
+
+```{r documentation}
+# What to document
+doc_checklist <- data.frame(
+  Section = c("Objectives", "Population", "Frame", "Design",
+             "Sample Size", "Selection", "Weights", "Variance"),
+  Include = c("Indicators, domains, precision",
+             "Target pop, exclusions",
+             "Source, coverage, quality",
+             "Strata, stages, allocation",
+             "Calculations, assumptions",
+             "Random mechanism, seed",
+             "Base, adjustments, final",
+             "Method, software, DEFF")
+)
+
+kable(doc_checklist) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Document everything!
+
+---
+
+## Common Mistakes
+
+### Learn from others:
+
+❌ Ignoring budget until too late  
+❌ Underestimating non-response  
+❌ Too many strata/domains  
+❌ No pilot testing  
+❌ Poor documentation  
+
+**Bottom line:** Plan thoroughly, test early
+
+---
+
+## Quick Exercise
+
+### Your turn (3 minutes):
+
+Calculate cost-optimal allocation:
+- Urban: N=7000, S=100, Cost=$60
+- Rural: N=3000, S=80, Cost=$180
+- Budget: $50,000 (after fixed costs)
+
+```{r exercise_cost}
+# Solution
+urban <- c(N = 7000, S = 100, C = 60)
+rural <- c(N = 3000, S = 80, C = 180)
+
+# Allocation factors
+urban_factor <- urban["N"] * urban["S"] / sqrt(urban["C"])
+rural_factor <- rural["N"] * rural["S"] / sqrt(rural["C"])
+
+# Budget
+budget_available <- 50000
+```
+
+**Bottom line:** Calculate, then we'll discuss
+
+---
+
+## Exercise Solution
+
+```{r exercise_cost_solution}
+# Cost-optimal allocation
+total_factor <- urban_factor + rural_factor
+
+# Proportions
+urban_prop <- urban_factor / total_factor
+rural_prop <- rural_factor / total_factor
+
+# Average cost
+avg_cost <- urban["C"] * urban_prop + rural["C"] * rural_prop
+
+# Total sample possible
+n_total <- floor(budget_available / avg_cost)
+
+# Allocate
+n_urban <- round(n_total * urban_prop)
+n_rural <- round(n_total * rural_prop)
+
+# Results
+c(Urban_n = n_urban,
+  Rural_n = n_rural,
+  Total_n = n_urban + n_rural,
+  Total_Cost = n_urban * urban["C"] + n_rural * rural["C"])
+```
+
+**Bottom line:** Urban gets more despite lower cost
+
+---
+
+## Advanced Topics Preview
+
+### Coming in Part 4:
+
+- Small area estimation
+- Model-assisted design
+- Big data integration
+- Machine learning applications
+- Real-time adaptation
+
+**Bottom line:** Future is data-driven
+
+---
+
+## Software Demo Prep
+
+### Tools we'll explore:
+
+```{r software_list}
+tools <- data.frame(
+  Software = c("R survey", "R sampling", "Stata", "Python"),
+  Strength = c("Comprehensive", "Selection algorithms",
+              "User-friendly", "ML integration"),
+  Use_Case = c("Analysis", "Sample drawing", 
+              "Standard surveys", "Innovation")
+)
+
+kable(tools) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Right tool for right job
+
+---
+
+## Group Activity
+
+### Design challenge (5 minutes):
+
+Your task:
+- Population: 1 million households
+- Budget: $200,000
+- Requirement: Provincial estimates (CV < 10%)
+- Constraint: 2 months fieldwork
+
+Discuss:
+1. Design choice?
+2. Sample size?
+3. Allocation?
+
+**Bottom line:** Apply what you've learned
+
+---
+
+## Real Budget Example
+
+```{r real_budget, fig.height=3.5}
+# Typical survey budget breakdown
+budget_breakdown <- data.frame(
+  Category = c("Staff", "Travel", "Incentives", 
+              "Technology", "Analysis", "Other"),
+  Percent = c(40, 25, 10, 10, 10, 5)
+)
+
+budget_breakdown %>%
+  ggplot(aes(x = "", y = Percent, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_minimal() +
+  labs(title = "Typical Survey Budget Distribution")
+```
+
+**Bottom line:** Staff costs dominate
+
+---
+
+## Time Management
+
+```{r time_management}
+# Project timeline
+timeline <- data.frame(
+  Phase = c("Planning", "Piloting", "Training", 
+           "Fieldwork", "Processing", "Analysis"),
+  Weeks = c(4, 2, 1, 8, 2, 4),
+  Cumulative = cumsum(c(4, 2, 1, 8, 2, 4))
+)
+
+kable(timeline) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** 21 weeks minimum realistic
+
+---
+
+## Pilot Testing
+
+### Why pilot?
+
+```{r pilot_benefits}
+pilot_value <- data.frame(
+  Aspect = c("Questionnaire", "Timing", "Training", 
+            "Logistics", "Response"),
+  Finding = c("3 unclear questions", "45 min (not 30)",
+             "Need 3 days (not 2)", "Transport issues",
+             "65% (expected 80%)"),
+  Action = c("Revise wording", "Reduce questions",
+            "Extend training", "Budget more",
+            "Increase sample")
+)
+
+kable(pilot_value) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Pilot saves disasters
+
+---
+
+## Contingency Planning
+
+```{r contingency}
+# Build in buffers
+contingencies <- data.frame(
+  Risk = c("Low response", "Weather delays", "Staff turnover",
+          "Tech failure", "Budget cut"),
+  Probability = c("High", "Medium", "Medium", "Low", "Low"),
+  Impact = c("High", "Medium", "High", "High", "High"),
+  Mitigation = c("+20% sample", "+2 weeks", 
+                "Train extras", "Paper backup", "Phased design")
+)
+
+kable(contingencies[, c("Risk", "Probability", "Impact")]) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Expect the unexpected
+
+---
+
+## Ethics Considerations
+
+```{r ethics}
+ethics_checklist <- data.frame(
+  Requirement = c("Ethics approval", "Informed consent",
+                 "Confidentiality", "Data protection",
+                 "Benefit sharing", "Do no harm"),
+  Status = c("Required", "Required", "Required",
+            "Required", "Recommended", "Required")
+)
+
+kable(ethics_checklist) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Ethics non-negotiable
+
+---
+
+## Stakeholder Management
+
+```{r stakeholders, fig.height=3.5}
+# Influence-Interest matrix
+stakeholders <- data.frame(
+  Stakeholder = c("Funder", "Government", "Community",
+                 "Team", "Respondents", "Media"),
+  Interest = c(9, 8, 6, 7, 5, 4),
+  Influence = c(9, 7, 4, 5, 3, 6)
+)
+
+ggplot(stakeholders, aes(x = Interest, y = Influence, 
+                         label = Stakeholder)) +
+  geom_point(size = 5, color = "blue") +
+  geom_text(hjust = -0.1, vjust = -0.5) +
+  theme_minimal() +
+  labs(title = "Stakeholder Mapping") +
+  xlim(3, 10) + ylim(2, 10)
+```
+
+**Bottom line:** Manage high influence/interest closely
+
+---
+
+## Communication Plan
+
+```{r communication}
+comm_plan <- data.frame(
+  Audience = c("Funder", "Field team", "Respondents", "Public"),
+  Channel = c("Reports", "WhatsApp", "SMS", "Website"),
+  Frequency = c("Monthly", "Daily", "Once", "Quarterly"),
+  Content = c("Progress", "Updates", "Results", "Findings")
+)
+
+kable(comm_plan) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Different audiences, different needs
+
+---
+
+## Lessons from Failures
+
+### What goes wrong:
+
+```{r failures}
+failure_lessons <- data.frame(
+  Problem = c("Census frame outdated", "Interviewers fabricate",
+             "Budget runs out", "Low response"),
+  Root_Cause = c("No update budget", "Poor supervision",
+                "Optimistic costing", "Bad timing"),
+  Lesson = c("Budget frame updates", "GPS tracking",
+            "Add 30% buffer", "Pilot extensively")
+)
+
+kable(failure_lessons[, c("Problem", "Lesson")]) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Learn from others' mistakes
+
+---
+
+## Success Factors
+
+### What makes surveys succeed:
+
+✅ Clear objectives  
+✅ Adequate resources  
+✅ Skilled team  
+✅ Stakeholder buy-in  
+✅ Robust design  
+✅ Quality control  
+✅ Timely dissemination  
+
+**Bottom line:** Success needs all elements
+
+---
+
+## Innovation Opportunities
+
+```{r innovation}
+innovations <- data.frame(
+  Area = c("Satellite data", "Mobile money", "AI coding",
+          "Sensor data", "Social media"),
+  Application = c("Frame building", "Incentives", "Data processing",
+                 "Passive collection", "Sentiment"),
+  Maturity = c("Emerging", "Proven", "Testing",
+              "Research", "Experimental")
+)
+
+kable(innovations) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Technology expanding possibilities
+
+---
+
+## Climate Impact
+
+### Sustainability considerations:
+
+```{r climate, fig.height=3.5}
+carbon_footprint <- data.frame(
+  Mode = c("F2F Urban", "F2F Rural", "Phone", "Web"),
+  CO2_kg = c(5, 25, 0.1, 0.01)
+)
+
+ggplot(carbon_footprint, aes(x = Mode, y = CO2_kg)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  theme_minimal() +
+  labs(y = "CO2 (kg per interview)",
+       title = "Carbon Footprint by Mode") +
+  scale_y_log10()
+```
+
+**Bottom line:** Consider environmental cost
+
+---
+
+## Future of Sampling
+
+### Trends to watch:
+
+- **Declining response rates** → New methods
+- **Digital populations** → Online panels
+- **Real-time needs** → Continuous surveys
+- **Privacy concerns** → Synthetic data
+- **AI integration** → Automated design
+
+**Bottom line:** Field evolving rapidly
+
+---
+
+## Your Action Plan
+
+### Next steps:
+
+1. **Review** your current design
+2. **Calculate** your DEFF
+3. **Identify** cost savings
+4. **Document** procedures
+5. **Share** learnings
+
+**Bottom line:** Start improving today
+
+---
+
+## Part 3 Summary
+
+### You've learned:
+
+✅ Cost optimization methods  
+✅ Multi-stage concepts  
+✅ Real constraints handling  
+✅ Case study lessons  
+✅ Practical workflows  
+
+**Bottom line:** Ready for complex realities!
+
+---
+
+## Quick Poll
+
+### Before break:
+
+Raise hands:
+- Who will use cost optimization?
+- Who needs multi-stage designs?
+- Who faces budget constraints?
+- Who wants more case studies?
+
+**Bottom line:** Tailor learning to needs
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### Coming in Part 4:
+- Advanced estimation
+- Missing data handling
+- Quality control systems
+
+### Reflection:
+What's your biggest constraint?
+
+**Bottom line:** Refresh and return!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 3
+
+## Slides 151-225 Complete
+
+### Continue to Part 4:
+### Advanced Methods & Innovation
+
+---
+
+---
+
+## Welcome to Part 4!
+
+### Advanced Methods & Quality Control
+
+Final technical session covers:
+- Advanced estimation
+- Missing data handling
+- Weight adjustments
+- Quality control
+- Modern innovations
+
+**Bottom line:** Master advanced techniques
+
+---
+
+## Small Area Estimation
+
+### The challenge:
+
+```{r sae_intro}
+# When domain sample sizes are too small
+domain_sizes <- data.frame(
+  District = paste("District", 1:10),
+  Sample_n = c(15, 22, 18, 45, 12, 30, 25, 10, 35, 20),
+  Direct_CV = round(100 / sqrt(c(15, 22, 18, 45, 12, 30, 25, 10, 35, 20)), 1)
+)
+
+domain_sizes %>%
+  filter(Sample_n < 30) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Direct estimates unreliable
+
+---
+
+## SAE Solution
+
+```{r sae_concept, fig.height=3.5}
+# Borrow strength from other areas
+set.seed(2024)
+districts <- 1:10
+true_means <- 50 + 10 * sin(districts/2)
+sample_means <- true_means + rnorm(10, 0, 15/sqrt(domain_sizes$Sample_n))
+model_means <- 50 + 5 * sin(districts/2) + rnorm(10, 0, 2)
+
+data.frame(
+  District = districts,
+  True = true_means,
+  Direct = sample_means,
+  Model = model_means
+) %>%
+  pivot_longer(-District) %>%
+  ggplot(aes(x = District, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(y = "Estimate", color = "Method",
+       title = "SAE Smooths Erratic Direct Estimates")
+```
+
+**Bottom line:** Models stabilize estimates
+
+---
+
+## Composite Estimators
+
+```{r composite_est}
+# Combine direct and synthetic estimates
+# Composite = γ × Direct + (1-γ) × Synthetic
+
+gamma_values <- c(1, 0.7, 0.5, 0.3, 0)
+names <- c("Direct", "Mostly Direct", "Balanced", 
+          "Mostly Model", "Synthetic")
+
+data.frame(
+  Type = names,
+  Gamma = gamma_values,
+  Weight_Direct = paste0(gamma_values * 100, "%"),
+  Weight_Model = paste0((1-gamma_values) * 100, "%")
+) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Balance reliability and specificity
+
+---
+
+## Model-Assisted Estimation
+
+```{r model_assisted}
+# Use auxiliary variables to improve estimates
+# Y = β₀ + β₁X + ε
+
+# Simulate auxiliary data
+set.seed(2024)
+n <- 100
+x_aux <- rnorm(n, 50, 10)  # Known for all
+y_true <- 20 + 1.5 * x_aux + rnorm(n, 0, 5)
+
+# Sample only 30
+sample_idx <- sample(1:n, 30)
+y_sample <- y_true[sample_idx]
+x_sample <- x_aux[sample_idx]
+
+# Direct estimate
+direct <- mean(y_sample)
+
+# Model-assisted
+model <- lm(y_sample ~ x_sample)
+predicted <- predict(model, newdata = data.frame(x_sample = x_aux))
+assisted <- mean(predicted)
+
+c(Direct = round(direct, 1),
+  Assisted = round(assisted, 1),
+  True = round(mean(y_true), 1))
+```
+
+**Bottom line:** Auxiliary data improves precision
+
+---
+
+## GREG Estimator
+
+### Generalized Regression Estimator:
+
+```{r greg_estimator}
+# GREG combines regression with calibration
+# Most general form of assisted estimation
+
+greg_components <- data.frame(
+  Component = c("Direct estimate", "Model prediction", 
+               "Calibration", "Final GREG"),
+  Role = c("Base estimate", "Efficiency gain",
+          "Bias correction", "Optimal combination"),
+  Complexity = c("Low", "Medium", "Medium", "High")
+)
+
+kable(greg_components) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** GREG is Swiss Army knife
+
+---
+
+## Missing Data Patterns
+
+```{r missing_patterns, fig.height=3.5}
+# Types of missingness
+set.seed(2024)
+n <- 500
+data_complete <- data.frame(
+  id = 1:n,
+  income = rnorm(n, 50000, 15000),
+  age = sample(18:65, n, replace = TRUE)
+)
+
+# MCAR: Missing Completely at Random
+data_mcar <- data_complete
+data_mcar$income[sample(1:n, 50)] <- NA
+
+# MAR: Missing at Random (depends on age)
+data_mar <- data_complete
+prob_miss <- plogis((data_mar$age - 40) / 10)
+data_mar$income[runif(n) < prob_miss] <- NA
+
+# MNAR: Missing Not at Random (high income missing)
+data_mnar <- data_complete
+prob_miss_nr <- plogis((data_mnar$income - 50000) / 10000)
+data_mnar$income[runif(n) < prob_miss_nr] <- NA
+
+# Visualize
+miss_summary <- data.frame(
+  Type = c("Complete", "MCAR", "MAR", "MNAR"),
+  Missing_Pct = c(0, 
+                 sum(is.na(data_mcar$income))/n * 100,
+                 sum(is.na(data_mar$income))/n * 100,
+                 sum(is.na(data_mnar$income))/n * 100)
+)
+
+ggplot(miss_summary, aes(x = Type, y = Missing_Pct)) +
+  geom_bar(stat = "identity", fill = "red", alpha = 0.7) +
+  theme_minimal() +
+  labs(y = "Missing %", title = "Different Missing Mechanisms")
+```
+
+**Bottom line:** Missing mechanism matters
+
+---
+
+## Imputation Methods
+
+```{r imputation_methods}
+# Common approaches
+methods <- data.frame(
+  Method = c("Listwise deletion", "Mean imputation",
+            "Hot deck", "Regression", "Multiple (MI)"),
+  Pros = c("Simple", "Uses all cases", "Preserves distribution",
+          "Uses relationships", "Accounts for uncertainty"),
+  Cons = c("Loses data", "Underestimates variance", 
+          "Assumes similar", "Assumes linear", "Complex"),
+  When_Use = c("MCAR & low %", "Never", "Similar donors",
+              "Good predictors", "Best practice")
+)
+
+kable(methods[, 1:3]) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Multiple imputation preferred
+
+---
+
+## Hot Deck Example
+
+```{r hot_deck}
+# Impute from similar respondents
+set.seed(2024)
+sample_data <- data.frame(
+  stratum = rep(c("Urban", "Rural"), each = 10),
+  income = c(rnorm(10, 60000, 10000), rnorm(10, 40000, 8000))
+)
+
+# Create missing
+sample_data$income[c(3, 7, 15)] <- NA
+
+# Hot deck within stratum
+for (i in which(is.na(sample_data$income))) {
+  donors <- which(!is.na(sample_data$income) & 
+                 sample_data$stratum == sample_data$stratum[i])
+  if (length(donors) > 0) {
+    sample_data$income[i] <- sample(sample_data$income[donors], 1)
+  }
+}
+
+# Check imputed values
+sample_data[c(3, 7, 15), ]
+```
+
+**Bottom line:** Preserves distribution
+
+---
+
+## Multiple Imputation
+
+```{r multiple_imputation, fig.height=3.5}
+# Create M complete datasets
+# Analyze each, combine results
+
+# Simulate MI results
+set.seed(2024)
+m_imputations <- 5
+estimates <- rnorm(m_imputations, 50000, 1000)
+ses <- runif(m_imputations, 800, 1200)
+
+# Rubin's rules for combining
+combined_est <- mean(estimates)
+within_var <- mean(ses^2)
+between_var <- var(estimates)
+total_var <- within_var + (1 + 1/m_imputations) * between_var
+combined_se <- sqrt(total_var)
+
+# Visualize
+data.frame(
+  Imputation = 1:m_imputations,
+  Estimate = estimates,
+  SE = ses
+) %>%
+  ggplot(aes(x = Imputation, y = Estimate)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Estimate - 1.96*ses,
+                   ymax = Estimate + 1.96*ses)) +
+  geom_hline(yintercept = combined_est, color = "red") +
+  theme_minimal() +
+  labs(title = "Multiple Imputation Results")
+```
+
+**Bottom line:** MI captures uncertainty
+
+---
+
+## Weight Trimming
+
+```{r weight_trimming, fig.height=3.5}
+# Extreme weights increase variance
+set.seed(2024)
+weights <- c(rlnorm(95, log(10), 0.5), 150, 200, 250, 300, 500)
+
+# Calculate impact
+cv_original <- sd(weights) / mean(weights)
+
+# Trim at 95th percentile
+trim_value <- quantile(weights, 0.95)
+weights_trimmed <- pmin(weights, trim_value)
+cv_trimmed <- sd(weights_trimmed) / mean(weights_trimmed)
+
+# Visualize
+data.frame(
+  Original = weights,
+  Trimmed = weights_trimmed
+) %>%
+  mutate(id = 1:n()) %>%
+  pivot_longer(-id) %>%
+  ggplot(aes(x = id, y = value, color = name)) +
+  geom_point() +
+  geom_hline(yintercept = trim_value, linetype = "dashed") +
+  theme_minimal() +
+  labs(y = "Weight", title = "Weight Trimming at 95th Percentile")
+```
+
+**Bottom line:** Trade bias for variance
+
+---
+
+## Weight Trimming Impact
+
+```{r trim_impact}
+# Compare before/after trimming
+comparison <- data.frame(
+  Measure = c("Mean Weight", "Max Weight", "CV", 
+             "DEFF (Kish)", "Bias"),
+  Original = c(mean(weights), max(weights), 
+              cv_original, 1 + cv_original^2, 0),
+  Trimmed = c(mean(weights_trimmed), max(weights_trimmed),
+             cv_trimmed, 1 + cv_trimmed^2, 2.5)
+)
+
+comparison %>%
+  mutate(across(where(is.numeric), ~round(., 2))) %>%
+  kable() %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Reduces variance, may add bias
+
+---
+
+## Calibration Techniques
+
+```{r calibration_techniques}
+# Different calibration approaches
+calib_methods <- data.frame(
+  Method = c("Linear", "Raking", "Logit", "Truncated"),
+  Property = c("Can be negative", "Always positive",
+              "Bounded", "Limited range"),
+  When_Use = c("Standard", "Proportions", 
+              "Known bounds", "Extreme weights"),
+  Complexity = c("Low", "Medium", "High", "Medium")
+)
+
+kable(calib_methods) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Choose based on constraints
+
+---
+
+## Benchmarking
+
+```{r benchmarking, fig.height=3.5}
+# Adjust to external totals
+# Example: adjust age distribution
+
+sample_age <- data.frame(
+  Age_Group = c("18-34", "35-54", "55+"),
+  Sample = c(250, 350, 200),
+  Population = c(4000, 3500, 2500)
+)
+
+sample_age$Adjustment <- sample_age$Population / 
+                        (sample_age$Sample * 12.5)
+
+sample_age %>%
+  pivot_longer(c(Sample, Population)) %>%
+  ggplot(aes(x = Age_Group, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(y = "Count", title = "Sample vs Population Distribution")
+```
+
+**Bottom line:** Match known totals
+
+---
+
+## Quality Control Framework
+
+```{r qc_framework}
+# Multi-level quality system
+qc_levels <- data.frame(
+  Level = c("Prevention", "Detection", "Correction", "Monitoring"),
+  When = c("Before", "During", "After", "Continuous"),
+  Example = c("Training, pilots", "Supervision, checks",
+             "Re-interviews, editing", "Dashboards, reports"),
+  Cost = c("Low", "Medium", "High", "Medium")
+)
+
+kable(qc_levels) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Prevention cheaper than correction
+
+---
+
+## Field Monitoring
+
+```{r field_monitoring, fig.height=3.5}
+# Real-time monitoring metrics
+set.seed(2024)
+days <- 1:20
+target <- rep(40, 20)
+actual <- 40 + cumsum(rnorm(20, 0, 5))
+
+data.frame(
+  Day = days,
+  Target = cumsum(target),
+  Actual = cumsum(actual)
+) %>%
+  pivot_longer(-Day) %>%
+  ggplot(aes(x = Day, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  geom_point() +
+  theme_minimal() +
+  labs(y = "Cumulative Interviews",
+       title = "Field Progress Monitoring")
+```
+
+**Bottom line:** Catch problems early
+
+---
+
+## Data Quality Indicators
+
+```{r quality_indicators}
+# Key metrics to track
+indicators <- data.frame(
+  Indicator = c("Completion rate", "Item non-response",
+               "Inconsistencies", "Interview length",
+               "GPS accuracy", "Audio quality"),
+  Target = c("> 95%", "< 5%", "< 1%", "30-45 min", 
+            "< 10m", "> 90%"),
+  Current = c("92%", "7%", "2%", "38 min", "8m", "88%"),
+  Status = c("⚠️", "⚠️", "❌", "✅", "✅", "⚠️")
+)
+
+kable(indicators) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Dashboard enables action
+
+---
+
+## Interviewer Performance
+
+```{r interviewer_performance, fig.height=3.5}
+# Monitor individual performance
+set.seed(2024)
+interviewers <- data.frame(
+  ID = 1:15,
+  Interviews = sample(20:60, 15),
+  Refusal_Rate = runif(15, 0.05, 0.25),
+  Avg_Length = rnorm(15, 35, 5)
+)
+
+ggplot(interviewers, aes(x = Interviews, y = Refusal_Rate)) +
+  geom_point(size = 3) +
+  geom_hline(yintercept = 0.15, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 40, linetype = "dashed", color = "blue") +
+  theme_minimal() +
+  labs(title = "Interviewer Performance Matrix",
+       subtitle = "Red line = refusal threshold, Blue = productivity target")
+```
+
+**Bottom line:** Identify training needs
+
+---
+
+## Validation Methods
+
+```{r validation_methods}
+# Ways to validate data
+validation <- data.frame(
+  Method = c("Re-interview", "Spot checks", "Audio review",
+            "GPS verification", "Logic checks", "Benford's law"),
+  Sample_Pct = c("10%", "5%", "15%", "100%", "100%", "100%"),
+  Catches = c("Fabrication", "Shortcuts", "Leading",
+             "Location fraud", "Errors", "Manipulation")
+)
+
+kable(validation) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Multiple methods catch different issues
+
+---
+
+## Paradata Analysis
+
+```{r paradata_analysis, fig.height=3.5}
+# Using process data for quality
+# Example: keystroke patterns
+
+set.seed(2024)
+# Simulate typing speeds (chars per second)
+normal_typing <- rnorm(100, 2, 0.5)
+suspicious_typing <- c(rnorm(20, 5, 0.3))  # Too fast
+
+data.frame(
+  Speed = c(normal_typing, suspicious_typing),
+  Type = c(rep("Normal", 100), rep("Suspicious", 20))
+) %>%
+  ggplot(aes(x = Speed, fill = Type)) +
+  geom_histogram(bins = 30, alpha = 0.7) +
+  theme_minimal() +
+  labs(x = "Typing Speed (char/sec)",
+       title = "Detecting Suspicious Response Patterns")
+```
+
+**Bottom line:** Patterns reveal problems
+
+---
+
+## Adaptive Design
+
+```{r adaptive_design}
+# Adjust design during collection
+adaptive_rules <- data.frame(
+  Trigger = c("Response < 60%", "Cost > budget", 
+             "CV > target", "Time running out"),
+  Action = c("Increase incentive", "Reduce rural sample",
+            "Increase sample", "Prioritize key vars"),
+  When = c("Week 2", "Week 3", "Week 4", "Week 5")
+)
+
+kable(adaptive_rules) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Flexibility improves outcomes
+
+---
+
+## Response Propensity
+
+```{r response_propensity, fig.height=3.5}
+# Model probability of response
+set.seed(2024)
+age <- 18:80
+prop_respond <- plogis(-2 + 0.05 * age - 0.0008 * age^2)
+
+data.frame(Age = age, Probability = prop_respond) %>%
+  ggplot(aes(x = Age, y = Probability)) +
+  geom_line(size = 1.5, color = "darkblue") +
+  theme_minimal() +
+  labs(y = "Response Probability",
+       title = "Response Propensity by Age") +
+  ylim(0, 1)
+```
+
+**Bottom line:** Target effort strategically
+
+---
+
+## Machine Learning Applications
+
+```{r ml_applications}
+# ML in survey sampling
+ml_uses <- data.frame(
+  Application = c("Non-response prediction", "Fraud detection",
+                 "Optimal allocation", "Imputation",
+                 "Text coding", "Quality scoring"),
+  Method = c("Random Forest", "Anomaly detection",
+            "Reinforcement learning", "Deep learning",
+            "NLP", "Ensemble"),
+  Maturity = c("Operational", "Testing", "Research",
+              "Operational", "Operational", "Testing")
+)
+
+kable(ml_uses) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** AI enhancing traditional methods
+
+---
+
+## Prediction Models
+
+```{r prediction_models}
+# Use ML for better estimates
+# Example: Random forest for small area
+
+library(randomForest)
+set.seed(2024)
+
+# Simulated data
+train_data <- data.frame(
+  population = runif(50, 1000, 50000),
+  density = runif(50, 10, 5000),
+  urban = rbinom(50, 1, 0.6),
+  unemployment = 5 + 10 * rbeta(50, 2, 5) + rnorm(50, 0, 1)
+)
+
+# Train model (would be on actual survey data)
+# rf_model <- randomForest(unemployment ~ ., data = train_data)
+
+# Simulated predictions
+predictions <- 5 + 8 * rbeta(10, 2, 5)
+actual <- 5 + 10 * rbeta(10, 2, 5)
+
+c(RMSE_Direct = round(sqrt(mean((actual - mean(actual))^2)), 2),
+  RMSE_Model = round(sqrt(mean((actual - predictions)^2)), 2))
+```
+
+**Bottom line:** ML can improve predictions
+
+---
+
+## Big Data Integration
+
+```{r big_data, fig.height=3.5}
+# Combining survey with big data
+data_sources <- data.frame(
+  Source = c("Survey", "Admin", "Sensors", "Social", "Satellite"),
+  Coverage = c(80, 95, 60, 40, 100),
+  Quality = c(95, 85, 70, 50, 80),
+  Cost = c(100, 20, 30, 5, 40)
+)
+
+data_sources %>%
+  pivot_longer(-Source) %>%
+  ggplot(aes(x = Source, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Score", title = "Data Source Characteristics")
+```
+
+**Bottom line:** Hybrid approaches emerging
+
+---
+
+## Administrative Data
+
+```{r admin_data}
+# Using admin records
+admin_benefits <- data.frame(
+  Aspect = c("Coverage", "Cost", "Burden", "Timeliness", "Quality"),
+  Survey = c("Sample", "High", "Yes", "Planned", "Designed"),
+  Admin = c("Full", "Low", "No", "Continuous", "Variable"),
+  Best = c("Admin", "Admin", "Admin", "Admin", "Survey")
+)
+
+kable(admin_benefits) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Complement, don't replace
+
+---
+
+## Sensor Data
+
+```{r sensor_data}
+# Passive data collection
+sensor_examples <- data.frame(
+  Type = c("Mobile phone", "Smart meter", "GPS tracker",
+          "Wearable", "IoT device"),
+  Measures = c("Mobility", "Energy use", "Location",
+              "Health", "Environment"),
+  Frequency = c("Continuous", "Hourly", "Real-time",
+               "Continuous", "Minutes"),
+  Privacy = c("High", "Medium", "High", "High", "Low")
+)
+
+kable(sensor_examples) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Rich but sensitive data
+
+---
+
+## Web Scraping
+
+```{r web_scraping, fig.height=3.5}
+# Online data collection
+# Example: price monitoring
+
+set.seed(2024)
+dates <- seq(as.Date("2024-01-01"), by = "week", length.out = 20)
+online_prices <- 100 * (1 + cumsum(rnorm(20, 0.002, 0.01)))
+survey_prices <- online_prices + rnorm(20, 0, 2)
+
+data.frame(
+  Date = dates,
+  Online = online_prices,
+  Survey = survey_prices
+) %>%
+  pivot_longer(-Date) %>%
+  ggplot(aes(x = Date, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  theme_minimal() +
+  labs(y = "Price Index", title = "Web vs Survey Price Data")
+```
+
+**Bottom line:** Timely but limited coverage
+
+---
+
+## Text Analysis
+
+```{r text_analysis}
+# Analyzing open-ended responses
+text_methods <- data.frame(
+  Task = c("Sentiment", "Topic modeling", "Classification",
+          "Entity extraction", "Translation"),
+  Traditional = c("Manual coding", "Manual", "Manual",
+                 "Manual", "Professional"),
+  Automated = c("NLP models", "LDA/BERT", "ML classifier",
+               "NER models", "Neural MT"),
+  Accuracy = c("85%", "75%", "90%", "80%", "95%")
+)
+
+kable(text_methods) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Automation scales analysis
+
+---
+
+## Network Sampling
+
+```{r network_sampling, fig.height=3.5}
+# Respondent-driven sampling
+# For hidden populations
+
+# Simulate recruitment chains
+set.seed(2024)
+seeds <- 5
+waves <- 4
+recruited <- seeds
+
+for (w in 1:waves) {
+  recruited <- c(recruited, recruited[length(recruited)] * 2)
+}
+
+data.frame(
+  Wave = 0:waves,
+  Cumulative = recruited
+) %>%
+  ggplot(aes(x = Wave, y = Cumulative)) +
+  geom_line(size = 1.5, color = "purple") +
+  geom_point(size = 3) +
+  theme_minimal() +
+  labs(y = "Cumulative Sample",
+       title = "Network Sampling Growth")
+```
+
+**Bottom line:** Reaches hidden populations
+
+---
+
+## Online Panels
+
+```{r online_panels}
+# Web panel characteristics
+panel_comparison <- data.frame(
+  Aspect = c("Cost", "Speed", "Coverage", "Quality", "Control"),
+  Probability = c("High", "Slow", "Good", "High", "Full"),
+  Opt_in = c("Low", "Fast", "Biased", "Variable", "Limited"),
+  Hybrid = c("Medium", "Medium", "Moderate", "Good", "Moderate")
+)
+
+kable(panel_comparison) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Trade-offs inevitable
+
+---
+
+## Mobile Surveys
+
+```{r mobile_surveys, fig.height=3.5}
+# SMS and app-based collection
+mobile_response <- data.frame(
+  Day = 1:7,
+  SMS = c(45, 20, 15, 10, 8, 5, 3),
+  App = c(30, 25, 20, 18, 15, 12, 10),
+  Web = c(35, 15, 10, 8, 6, 5, 4)
+)
+
+mobile_response %>%
+  pivot_longer(-Day) %>%
+  ggplot(aes(x = Day, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  geom_point() +
+  theme_minimal() +
+  labs(y = "Response %", title = "Response Timing by Mode")
+```
+
+**Bottom line:** Quick but lower response
+
+---
+
+## Blockchain for Surveys
+
+```{r blockchain}
+# Potential blockchain applications
+blockchain_uses <- data.frame(
+  Application = c("Consent management", "Incentive payments",
+                 "Data integrity", "Panel management"),
+  Benefit = c("Verifiable consent", "Instant payment",
+             "Tamper-proof", "Prevent duplicates"),
+  Challenge = c("Complexity", "Volatility", 
+               "Scalability", "Technical skills"),
+  Status = c("Pilot", "Operational", "Testing", "Research")
+)
+
+kable(blockchain_uses) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Emerging technology
+
+---
+
+## Privacy Protection
+
+```{r privacy_protection}
+# Modern privacy methods
+privacy_methods <- data.frame(
+  Method = c("Differential privacy", "Secure computation",
+            "Homomorphic encryption", "Synthetic data"),
+  Protection = c("Add noise", "Compute without seeing",
+                "Encrypted processing", "Fake but realistic"),
+  Impact = c("Reduces precision", "Increases cost",
+            "Very slow", "Validity questions"),
+  Use_Case = c("Public release", "Multi-party", 
+              "Cloud processing", "Sharing")
+)
+
+kable(privacy_methods) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Privacy vs utility trade-off
+
+---
+
+## Synthetic Data
+
+```{r synthetic_data, fig.height=3.5}
+# Creating fake but realistic data
+set.seed(2024)
+# Original data
+original <- data.frame(
+  age = sample(18:80, 100, replace = TRUE),
+  income = rlnorm(100, 10, 0.5)
+)
+
+# Synthetic (preserves relationships)
+synthetic <- data.frame(
+  age = sample(original$age, 100, replace = TRUE),
+  income = rlnorm(100, 
+                 mean(log(original$income)), 
+                 sd(log(original$income)))
+)
+
+# Compare distributions
+bind_rows(
+  original %>% mutate(type = "Original"),
+  synthetic %>% mutate(type = "Synthetic")
+) %>%
+  ggplot(aes(x = age, y = income, color = type)) +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Original vs Synthetic Data")
+```
+
+**Bottom line:** Protects individuals
+
+---
+
+## Quality Metrics Dashboard
+
+```{r dashboard_mockup, fig.height=3.5}
+# Key metrics visualization
+metrics <- data.frame(
+  Metric = c("Response\nRate", "Cost per\nInterview", 
+            "Data\nQuality", "Timeline"),
+  Current = c(72, 85, 88, 95),
+  Target = c(80, 100, 95, 100)
+)
+
+metrics %>%
+  pivot_longer(c(Current, Target)) %>%
+  ggplot(aes(x = Metric, y = value, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_hline(yintercept = 100, linetype = "dashed") +
+  theme_minimal() +
+  labs(y = "Performance %", title = "Survey Dashboard")
+```
+
+**Bottom line:** Visualize for action
+
+---
+
+## Cost-Quality Frontier
+
+```{r cost_quality_final, fig.height=3.5}
+# Optimal design selection
+set.seed(2024)
+designs <- data.frame(
+  Design = paste("D", 1:15),
+  Cost = runif(15, 30000, 150000),
+  Quality = 100 - runif(15, 2, 15) * (1 + runif(15, -0.2, 0.2))
+)
+
+# Identify frontier
+designs$Efficient <- FALSE
+for (i in 1:nrow(designs)) {
+  designs$Efficient[i] <- !any(
+    designs$Cost < designs$Cost[i] & 
+    designs$Quality > designs$Quality[i]
+  )
+}
+
+ggplot(designs, aes(x = Cost/1000, y = Quality)) +
+  geom_point(aes(color = Efficient), size = 3) +
+  geom_smooth(data = filter(designs, Efficient),
+             method = "loess", se = FALSE) +
+  theme_minimal() +
+  labs(x = "Cost (1000s)", y = "Quality Score",
+       title = "Efficient Design Frontier")
+```
+
+**Bottom line:** Choose from frontier
+
+---
+
+## Continuous Surveys
+
+```{r continuous_surveys}
+# Moving from periodic to continuous
+continuous_benefits <- data.frame(
+  Aspect = c("Timeliness", "Sample size", "Burden",
+            "Cost", "Flexibility", "Quality"),
+  Periodic = c("Delayed", "Large burst", "Concentrated",
+              "Peaks", "Fixed", "Variable"),
+  Continuous = c("Current", "Steady flow", "Distributed",
+                "Smooth", "Adaptable", "Consistent")
+)
+
+kable(continuous_benefits) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Continuous becoming standard
+
+---
+
+## Real-Time Estimation
+
+```{r realtime_estimation, fig.height=3.5}
+# Nowcasting with partial data
+set.seed(2024)
+days <- 1:30
+true_value <- 50
+collected <- cumsum(rbinom(30, 40, 0.7))
+estimate <- 50 + (collected / (1:30) - 28) * 0.5
+
+data.frame(
+  Day = days,
+  True = true_value,
+  Estimate = estimate
+) %>%
+  pivot_longer(-Day) %>%
+  ggplot(aes(x = Day, y = value, color = name)) +
+  geom_line(size = 1.2) +
+  theme_minimal() +
+  labs(y = "Estimate", title = "Real-Time Estimation Convergence")
+```
+
+**Bottom line:** Early estimates improve
+
+---
+
+## Exercise: Weight Adjustment
+
+### Calculate adjusted weights (3 min):
+
+```{r exercise_weights_adj}
+# Given:
+base_weight <- 12.5
+response_rate <- 0.75
+calibration_factor <- 1.05
+
+# Calculate final weight
+final_weight <- base_weight / response_rate * calibration_factor
+
+c(Base = base_weight,
+  NR_Adjusted = base_weight / response_rate,
+  Final = final_weight,
+  Increase = round((final_weight / base_weight - 1) * 100, 1))
+```
+
+**Bottom line:** Weights compound adjustments
+
+---
+
+## Documentation Standards
+
+```{r documentation_standards}
+# What to document for reproducibility
+doc_requirements <- data.frame(
+  Section = c("Data collection", "Weights", "Imputation",
+             "Estimation", "Quality", "Code"),
+  Must_Include = c("Dates, mode, problems",
+                  "Base, adjustments, final",
+                  "Method, variables, diagnostics",
+                  "Formulas, software, options",
+                  "Response rates, checks, issues",
+                  "Version, seed, parameters")
+)
+
+kable(doc_requirements) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Document for reproduction
+
+---
+
+## Version Control
+
+```{r version_control}
+# Track changes systematically
+versioning <- data.frame(
+  Version = c("v1.0", "v1.1", "v2.0", "v2.1"),
+  Date = c("2024-01", "2024-02", "2024-03", "2024-04"),
+  Change = c("Initial weights", "Fix trimming",
+            "Add calibration", "Update benchmarks"),
+  Impact = c("Baseline", "CV -5%", "Bias -2%", "Minor")
+)
+
+kable(versioning) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Track every change
+
+---
+
+## Reproducibility Checklist
+
+### Can someone reproduce your work?
+
+☐ Raw data archived  
+☐ Code versioned  
+☐ Random seeds set  
+☐ Package versions noted  
+☐ Decisions documented  
+☐ Output timestamped  
+
+**Bottom line:** Future-proof your work
+
+---
+
+## Ethics in Innovation
+
+```{r ethics_innovation}
+# Ethical considerations for new methods
+ethics_matrix <- data.frame(
+  Innovation = c("AI/ML", "Big data", "Sensors", "Synthetic"),
+  Benefit = c("Efficiency", "Coverage", "Continuous", "Privacy"),
+  Risk = c("Bias", "Consent", "Intrusion", "Misuse"),
+  Mitigation = c("Audit models", "Transparency", 
+                "Opt-in only", "Watermarking")
+)
+
+kable(ethics_matrix) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Innovation requires responsibility
+
+---
+
+## Future Directions
+
+### Next 5 years:
+
+- **AI-designed surveys** - Optimal by default
+- **Real-time adaptation** - Learning systems
+- **Integrated data** - Survey + admin + sensors
+- **Privacy-preserving** - Compute without seeing
+- **Automated quality** - Self-correcting systems
+
+**Bottom line:** Exciting times ahead
+
+---
+
+## Skills for Future
+
+```{r future_skills}
+# What to learn next
+skills <- data.frame(
+  Skill = c("Machine learning", "Big data tools", 
+           "Cloud computing", "Privacy tech", "Automation"),
+  Current = c("Specialist", "Emerging", "Growing", 
+             "Niche", "Essential"),
+  Future = c("Essential", "Standard", "Required", 
+            "Critical", "Universal"),
+  Learn_Via = c("Online courses", "Practice", "Platforms",
+               "Research", "Tools")
+)
+
+kable(skills) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Keep learning
+
+---
+
+## Community Resources
+
+### Where to learn more:
+
+- **ITSEW** - International Total Survey Error Workshop
+- **AAPOR** - American Association for Public Opinion Research  
+- **ISI** - International Statistical Institute
+- **R-bloggers** - R community posts
+- **CrossValidated** - Stack Exchange for statistics
+
+**Bottom line:** Join the community
+
+---
+
+## Your Next Steps
+
+### Action plan:
+
+1. **Audit** current methods
+2. **Identify** improvement areas
+3. **Pilot** one new technique
+4. **Measure** impact
+5. **Share** results
+
+**Bottom line:** Start small, measure impact
+
+---
+
+## Part 4 Summary
+
+### You've explored:
+
+✅ Advanced estimation methods  
+✅ Missing data handling  
+✅ Quality control systems  
+✅ Modern innovations  
+✅ Future directions  
+
+**Bottom line:** Equipped for modern challenges!
+
+---
+
+## Group Discussion
+
+### Share with your table (3 min):
+
+1. Which innovation excites you most?
+2. What's your biggest data quality challenge?
+3. One technique you'll try?
+
+**Bottom line:** Learn from each other
+
+---
+
+## Closing Reflection
+
+### Think about:
+
+- Where you started this morning
+- What you've learned today
+- How you'll apply it
+
+Write one commitment to yourself
+
+**Bottom line:** Knowledge requires action
+
+---
+
+## Final Break
+
+## ☕ 10-Minute Break
+
+### Coming in Part 5:
+- Capstone exercise
+- Group presentations
+- Q&A session
+- Certificates
+
+**Bottom line:** Final sprint ahead!
+
+---
+
+class: center, middle, inverse
+
+# End of Part 4
+
+## Slides 226-300 Complete
+
+### Final Part Next:
+### Capstone Exercise & Wrap-up
+
+---
+
+---
+
+## Welcome to Part 5!
+
+### Capstone Exercise & Wrap-up
+
+Final session agenda:
+- Comprehensive exercise
+- Group presentations
+- Best practices review
+- Q&A session
+- Certificates & closing
+
+**Bottom line:** Time to apply everything!
+
+---
+
+## Capstone Scenario
+
+### Your Challenge:
+
+**National Household Income Survey**
+- Population: 5 million households
+- Budget: $2 million
+- Timeline: 6 months
+- Requirements: Provincial & urban/rural estimates
+- Target CV: 5% national, 10% provincial
+
+**Bottom line:** Real-world complexity
+
+---
+
+## Scenario Details
+
+```{r capstone_setup}
+# Population structure
+population <- data.frame(
+  Province = rep(c("North", "South", "East", "West"), each = 2),
+  Area = rep(c("Urban", "Rural"), 4),
+  Households = c(800000, 200000, 1200000, 300000,
+                600000, 400000, 1000000, 500000),
+  Avg_Income = c(65000, 45000, 70000, 40000,
+                55000, 35000, 60000, 38000),
+  SD_Income = c(30000, 20000, 35000, 18000,
+               25000, 15000, 28000, 17000)
+)
+
+kable(population) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** 8 strata, varying characteristics
+
+---
+
+## Phase 1: Design
+
+### Your tasks (15 minutes):
+
+1. Choose stratification
+2. Select allocation method  
+3. Calculate sample sizes
+4. Consider costs
+5. Document decisions
+
+Work in groups of 4-5
+
+**Bottom line:** Design determines success
+
+---
+
+## Cost Structure
+
+```{r capstone_costs}
+# Given cost parameters
+costs <- data.frame(
+  Component = c("Fixed setup", "Training", "Per interview",
+               "Travel urban", "Travel rural", "Processing"),
+  Cost = c("$200,000", "$50,000", "$40", "$10", "$30", "$15"),
+  Notes = c("One-time", "50 interviewers", "Per HH",
+           "Per HH", "Per HH", "Per HH")
+)
+
+kable(costs) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Rural costs 2x urban
+
+---
+
+## Starter Calculations
+
+```{r capstone_calc_start}
+# Help get started
+total_pop <- sum(population$Households)
+total_budget <- 2000000
+fixed_costs <- 250000
+available <- total_budget - fixed_costs
+
+# Average cost per interview (weighted)
+urban_prop <- sum(population$Households[population$Area == "Urban"]) / total_pop
+rural_prop <- 1 - urban_prop
+avg_cost <- (40 + 10) * urban_prop + (40 + 30) * rural_prop + 15
+
+max_interviews <- floor(available / avg_cost)
+
+c(Population = total_pop,
+  Available_Budget = available,
+  Avg_Cost_Per_HH = round(avg_cost, 2),
+  Max_Possible_n = max_interviews)
+```
+
+**Bottom line:** Budget allows ~27,000 interviews max
+
+---
+
+## Sample Size for CV Target
+
+```{r capstone_sample_size}
+# Required sample for 5% CV at national level
+# Assume simple random sample first
+
+# Population parameters
+pop_mean <- weighted.mean(population$Avg_Income, population$Households)
+pop_sd <- sqrt(weighted.mean(population$SD_Income^2, population$Households))
+pop_cv <- pop_sd / pop_mean
+
+# For CV = 5%
+target_cv <- 0.05
+n_srs <- (pop_cv / target_cv)^2
+
+# With stratification (assume DEFF = 0.8)
+n_stratified <- n_srs * 0.8
+
+c(SRS_needed = round(n_srs),
+  Stratified_needed = round(n_stratified),
+  Budget_allows = max_interviews,
+  Feasible = max_interviews > n_stratified)
+```
+
+**Bottom line:** Stratification makes target achievable
+
+---
+
+## Allocation Options
+
+```{r capstone_allocation}
+# Compare allocation methods
+n_total <- 20000  # Chosen sample size
+
+# Proportional
+population$prop_n <- round(n_total * 
+  population$Households / sum(population$Households))
+
+# Neyman (optimal)
+population$alloc_factor <- population$Households * population$SD_Income
+population$neyman_n <- round(n_total * 
+  population$alloc_factor / sum(population$alloc_factor))
+
+# Cost-optimal
+population$cost_h <- ifelse(population$Area == "Urban", 65, 85)
+population$cost_factor <- population$alloc_factor / sqrt(population$cost_h)
+population$cost_n <- round(n_total * 
+  population$cost_factor / sum(population$cost_factor))
+
+population[, c("Province", "Area", "prop_n", "neyman_n", "cost_n")]
+```
+
+**Bottom line:** Cost-optimal saves money
+
+---
+
+## Check Domain Sizes
+
+```{r capstone_domains}
+# Provincial sample sizes
+domain_check <- population %>%
+  group_by(Province) %>%
+  summarise(
+    Proportional = sum(prop_n),
+    Neyman = sum(neyman_n),
+    Cost_Optimal = sum(cost_n)
+  )
+
+kable(domain_check) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** All methods give adequate provincial n
+
+---
+
+## Calculate Costs
+
+```{r capstone_cost_calc}
+# Total cost for each allocation
+calc_total_cost <- function(n_vec, area_vec) {
+  fixed <- 250000
+  interview <- sum(n_vec * 40)
+  travel <- sum(n_vec * ifelse(area_vec == "Urban", 10, 30))
+  processing <- sum(n_vec * 15)
+  return(fixed + interview + travel + processing)
+}
+
+cost_comparison <- data.frame(
+  Method = c("Proportional", "Neyman", "Cost-Optimal"),
+  Total_Cost = c(
+    calc_total_cost(population$prop_n, population$Area),
+    calc_total_cost(population$neyman_n, population$Area),
+    calc_total_cost(population$cost_n, population$Area)
+  ),
+  Within_Budget = c("Yes", "Yes", "Yes")
+)
+
+cost_comparison$Total_Cost <- paste0("$", 
+  format(cost_comparison$Total_Cost, big.mark = ","))
+
+kable(cost_comparison) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** All allocations within budget
+
+---
+
+## Expected Precision
+
+```{r capstone_precision, fig.height=3.5}
+# Calculate expected CV for each method
+calc_cv <- function(n_h, N_h, S_h) {
+  W_h <- N_h / sum(N_h)
+  var_mean <- sum(W_h^2 * S_h^2 / n_h * (1 - n_h/N_h))
+  se <- sqrt(var_mean)
+  mean_est <- sum(W_h * population$Avg_Income)
+  return(100 * se / mean_est)
+}
+
+cv_results <- data.frame(
+  Method = c("Proportional", "Neyman", "Cost-Optimal"),
+  National_CV = c(
+    calc_cv(population$prop_n, population$Households, population$SD_Income),
+    calc_cv(population$neyman_n, population$Households, population$SD_Income),
+    calc_cv(population$cost_n, population$Households, population$SD_Income)
+  )
+)
+
+ggplot(cv_results, aes(x = Method, y = National_CV)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_hline(yintercept = 5, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(y = "CV (%)", title = "Expected Precision by Method")
+```
+
+**Bottom line:** All methods meet precision target
+
+---
+
+## Phase 2: Implementation
+
+### Next tasks (10 minutes):
+
+1. Design weights calculation
+2. Plan quality control
+3. Consider non-response
+4. Document workflow
+5. Prepare timeline
+
+**Bottom line:** Details matter
+
+---
+
+## Weight Calculation
+
+```{r capstone_weights}
+# Calculate design weights for chosen allocation
+# Using cost-optimal
+
+population$design_weight <- population$Households / population$cost_n
+
+# Check weight variation
+weight_summary <- data.frame(
+  Stratum = paste(population$Province, population$Area),
+  N_h = population$Households,
+  n_h = population$cost_n,
+  Weight = round(population$design_weight, 1),
+  Sample_Pct = round(100 * population$cost_n / population$Households, 2)
+)
+
+kable(weight_summary[1:4, ]) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Weights vary by design
+
+---
+
+## Non-Response Planning
+
+```{r capstone_nonresponse}
+# Anticipate differential response
+response_scenarios <- data.frame(
+  Stratum = paste(population$Province, population$Area)[1:4],
+  Expected_RR = c(0.75, 0.85, 0.70, 0.82),
+  Initial_n = population$cost_n[1:4],
+  Expected_achieved = round(population$cost_n[1:4] * 
+                            c(0.75, 0.85, 0.70, 0.82)),
+  Oversample = round(population$cost_n[1:4] / c(0.75, 0.85, 0.70, 0.82))
+)
+
+kable(response_scenarios) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Oversample for expected non-response
+
+---
+
+## Quality Control Plan
+
+```{r capstone_quality}
+# Quality assurance framework
+qc_plan <- data.frame(
+  Stage = c("Training", "Pilot", "Field", "Processing", "Analysis"),
+  Method = c("Competency test", "50 interviews", 
+            "5% re-interview", "Logic checks", "Sensitivity"),
+  Metric = c("80% pass", "Issues identified", 
+            "<2% discrepancy", "<1% errors", "Robust results"),
+  Action = c("Retrain if fail", "Revise instrument",
+            "Retrain/dismiss", "Correct/impute", "Document")
+)
+
+kable(qc_plan) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Quality at every stage
+
+---
+
+## Timeline Development
+
+```{r capstone_timeline, fig.height=3.5}
+# Project schedule
+timeline <- data.frame(
+  Phase = c("Planning", "Preparation", "Pilot", 
+           "Training", "Field", "Processing", "Analysis"),
+  Start_Week = c(0, 2, 5, 6, 8, 20, 22),
+  Duration = c(2, 3, 1, 2, 12, 2, 4),
+  End_Week = c(2, 5, 6, 8, 20, 22, 26)
+)
+
+timeline %>%
+  ggplot(aes(y = Phase, xmin = Start_Week, xmax = End_Week)) +
+  geom_linerange(size = 10, color = "darkblue") +
+  theme_minimal() +
+  labs(x = "Week", title = "6-Month Project Timeline") +
+  scale_x_continuous(breaks = seq(0, 26, 2))
+```
+
+**Bottom line:** 26 weeks total
+
+---
+
+## Phase 3: Analysis
+
+### Final tasks (10 minutes):
+
+1. Estimation procedures
+2. Variance calculation
+3. Domain estimates
+4. Quality metrics
+5. Reporting plan
+
+**Bottom line:** Analysis crowns the work
+
+---
+
+## Estimation Code
+
+```{r capstone_estimation}
+# Pseudo-code for analysis
+# After data collection:
+
+# 1. Create survey design object
+cat("# Create design
+design <- svydesign(
+  ids = ~1,
+  strata = ~stratum,
+  weights = ~final_weight,
+  data = survey_data
+)
+
+# 2. Calculate estimates
+national <- svymean(~income, design)
+provincial <- svyby(~income, ~Province, design, svymean)
+urban_rural <- svyby(~income, ~Area, design, svymean)
+
+# 3. Quality metrics
+deff <- deff(design)
+cv <- cv(national)
+")
+```
+
+**Bottom line:** Proper survey analysis essential
+
+---
+
+## Variance Components
+
+```{r capstone_variance_comp, fig.height=3.5}
+# Expected variance contributions
+var_contrib <- population %>%
+  mutate(
+    W_h = Households / sum(Households),
+    var_contribution = W_h^2 * SD_Income^2 / cost_n
+  ) %>%
+  arrange(desc(var_contribution))
+
+var_contrib %>%
+  ggplot(aes(x = reorder(paste(Province, Area), var_contribution), 
+             y = var_contribution)) +
+  geom_bar(stat = "identity", fill = "darkred") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "", y = "Variance Contribution",
+       title = "Which Strata Drive Uncertainty?")
+```
+
+**Bottom line:** Focus quality control here
+
+---
+
+## Domain Precision
+
+```{r capstone_domain_cv}
+# Expected domain CVs
+domain_cv <- population %>%
+  group_by(Province) %>%
+  summarise(
+    n_domain = sum(cost_n),
+    mean_income = weighted.mean(Avg_Income, Households),
+    pooled_sd = sqrt(weighted.mean(SD_Income^2, Households)),
+    expected_cv = 100 * pooled_sd / (mean_income * sqrt(n_domain))
+  )
+
+domain_cv %>%
+  mutate(expected_cv = round(expected_cv, 1)) %>%
+  kable() %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** All provinces meet 10% CV target
+
+---
+
+## Reporting Framework
+
+```{r capstone_reporting}
+# Report structure
+report_outline <- data.frame(
+  Section = c("Executive Summary", "Methodology", "National Results",
+             "Provincial Results", "Quality Assessment", "Appendices"),
+  Pages = c(2, 10, 15, 20, 5, 20),
+  Key_Content = c("Main findings, CV",
+                 "Design, weights, variance",
+                 "Income estimates, trends",
+                 "Provincial profiles",
+                 "Response rates, DEFF",
+                 "Technical details, code")
+)
+
+kable(report_outline) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Clear structure essential
+
+---
+
+## Group Presentations
+
+### Present your solution (5 min each):
+
+1. **Design choice** - Why?
+2. **Allocation** - Which method?
+3. **Cost** - Within budget?
+4. **Precision** - Meet targets?
+5. **Innovation** - Any creative solutions?
+
+First group volunteers?
+
+**Bottom line:** Share and learn
+
+---
+
+## Group 1 Presentation
+
+### [Space for Group 1]
+
+Key decisions:
+- Stratification: ___
+- Allocation: ___
+- Sample size: ___
+- Total cost: ___
+- Expected CV: ___
+
+**Bottom line:** [Instructor provides feedback]
+
+---
+
+## Group 2 Presentation
+
+### [Space for Group 2]
+
+Key decisions:
+- Stratification: ___
+- Allocation: ___
+- Sample size: ___
+- Total cost: ___
+- Expected CV: ___
+
+**Bottom line:** [Instructor provides feedback]
+
+---
+
+## Group 3 Presentation
+
+### [Space for Group 3]
+
+Key decisions:
+- Stratification: ___
+- Allocation: ___
+- Sample size: ___
+- Total cost: ___
+- Expected CV: ___
+
+**Bottom line:** [Instructor provides feedback]
+
+---
+
+## Common Themes
+
+### What we learned from presentations:
+
+✓ Multiple valid approaches  
+✓ Trade-offs inevitable  
+✓ Documentation critical  
+✓ Assumptions matter  
+✓ Collaboration helps  
+
+**Bottom line:** No single perfect design
+
+---
+
+## Best Practices Summary
+
+### Top 10 to remember:
+
+1. **Define objectives clearly**
+2. **Know your population**
+3. **Document everything**
+4. **Use appropriate software**
+5. **Calculate proper weights**
+6. **Monitor quality continuously**
+7. **Plan for non-response**
+8. **Report limitations honestly**
+9. **Archive for reproducibility**
+10. **Keep learning**
+
+**Bottom line:** Excellence is habit
+
+---
+
+## Software Resources
+
+```{r software_resources}
+# Key R packages for survey work
+packages <- data.frame(
+  Package = c("survey", "sampling", "srvyr",
+             "PracTools", "laeken", "convey"),
+  Purpose = c("Analysis", "Sample selection", "Tidy survey",
+               "Sample size", "Indicators", "Poverty/inequality"),
+  Documentation = c("Excellent", "Good", "Good",
+                   "Excellent", "Good", "Good")
+)
+
+kable(packages) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** R has everything needed
+
+---
+
+## Learning Resources
+
+### Continue your journey:
+
+📚 **Books:**
+- Lohr: "Sampling: Design and Analysis"
+- Lumley: "Complex Surveys"
+- Valliant: "Practical Tools for Survey Sampling"
+
+🌐 **Online:**
+- survey-stats.org
+- asdfree.com
+- r-survey-guide.com
+
+**Bottom line:** Keep building expertise
+
+---
+
+## Professional Networks
+
+### Join the community:
+
+- **Local**: National Statistical Society
+- **Regional**: African Statistical Association
+- **International**: ISI, IASS
+- **Online**: LinkedIn groups, Twitter #surveystatistics
+
+Share knowledge, get support
+
+**Bottom line:** Network accelerates learning
+
+---
+
+## Code Repository
+
+```{r code_repo}
+# Share your code
+cat("# Example GitHub structure for survey project
+
+survey-project/
+├── 01-design/
+│   ├── stratification.R
+│   └── allocation.R
+├── 02-sampling/
+│   ├── selection.R
+│   └── weights.R
+├── 03-analysis/
+│   ├── estimation.R
+│   └── variance.R
+├── 04-reports/
+│   └── final_report.Rmd
+└── README.md
+")
+```
+
+**Bottom line:** Version control essential
+
+---
+
+## Career Paths
+
+```{r career_paths, fig.height=3.5}
+# Survey statistics career options
+careers <- data.frame(
+  Role = c("Survey Statistician", "Data Scientist",
+          "Research Director", "Consultant", "Academic"),
+  Years = c(0, 3, 5, 7, 10),
+  Level = c(1, 2, 3, 3.5, 4)
+)
+
+ggplot(careers, aes(x = Years, y = Level, label = Role)) +
+  geom_point(size = 4, color = "blue") +
+  geom_text(hjust = -0.1, vjust = -0.5) +
+  theme_minimal() +
+  labs(x = "Years Experience", y = "Seniority",
+       title = "Survey Statistics Career Progression") +
+  xlim(-1, 12) + ylim(0.5, 4.5)
+```
+
+**Bottom line:** Many paths available
+
+---
+
+## Salary Expectations
+
+```{r salary_expect}
+# Rough salary guides (USD thousands)
+salary_guide <- data.frame(
+  Experience = c("Entry", "3-5 years", "5-10 years", "10+ years"),
+  Government = c("40-60", "60-80", "80-110", "110-150"),
+  Private = c("50-70", "70-100", "100-140", "140-200"),
+  Consulting = c("45-65", "65-95", "95-130", "130-180")
+)
+
+kable(salary_guide) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Specialized skills pay well
+
+---
+
+## Ethics Reminder
+
+### Our professional responsibilities:
+
+✓ **Transparency** - Methods and limitations  
+✓ **Confidentiality** - Protect respondents  
+✓ **Quality** - Best practices always  
+✓ **Honesty** - Report what we find  
+✓ **Service** - Public good focus  
+
+**Bottom line:** Ethics define profession
+
+---
+
+## Climate Consideration
+
+```{r climate_action}
+# Sustainable survey practices
+sustainable <- data.frame(
+  Practice = c("Remote training", "Digital collection",
+              "Local teams", "Efficient routing", "Cloud computing"),
+  Carbon_Saved = c("High", "Medium", "High", "Medium", "Low"),
+  Quality_Impact = c("Neutral", "Positive", "Positive", 
+                    "Neutral", "Positive"),
+  Cost_Impact = c("Lower", "Lower", "Neutral", "Lower", "Higher")
+)
+
+kable(sustainable) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Sustainable can be better
+
+---
+
+## Innovation Challenge
+
+### Your homework:
+
+Think of ONE innovation for your organization:
+- New method?
+- New technology?
+- New application?
+- New efficiency?
+
+Email me in 1 month with results!
+
+**Bottom line:** Innovation starts with you
+
+---
+
+## Q&A Session
+
+### Your questions?
+
+Topics we can cover:
+- Technical clarifications
+- Software specifics
+- Career advice
+- Resources
+- Specific country contexts
+
+Who has first question?
+
+**Bottom line:** No question too simple
+
+---
+
+## Workshop Evaluation
+
+### Please rate (1-5):
+
+```{r evaluation_form}
+eval_form <- data.frame(
+  Aspect = c("Content relevance", "Presentation clarity",
+            "Practical value", "Materials quality",
+            "Time management", "Overall satisfaction"),
+  Rating = rep("___", 6),
+  Comments = rep("________________", 6)
+)
+
+kable(eval_form) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Your feedback improves future workshops
+
+---
+
+## Key Takeaways
+
+### You can now:
+
+✅ **Design** stratified samples optimally  
+✅ **Calculate** appropriate allocations  
+✅ **Handle** complex constraints  
+✅ **Estimate** variances correctly  
+✅ **Apply** modern methods  
+✅ **Document** reproducibly  
+
+**Bottom line:** You're ready!
+
+---
+
+## Personal Action Plan
+
+### Write down:
+
+1. **One technique** I'll implement immediately:
+   _________________________________
+
+2. **One skill** I'll develop further:
+   _________________________________
+
+3. **One person** I'll share this with:
+   _________________________________
+
+**Bottom line:** Commitment drives change
+
+---
+
+## Stay Connected
+
+### Let's keep in touch:
+
+📧 Email: instructor@surveysampling.org  
+💼 LinkedIn: [Instructor Name]  
+🐦 Twitter: @surveysampling  
+📊 GitHub: github.com/surveysampling  
+
+Monthly newsletter with tips & updates
+
+**Bottom line:** Learning continues
+
+---
+
+## Certificate Preparation
+
+### Congratulations to all participants!
+
+**Certificate of Completion**
+- Advanced Survey Sampling: Stratified Designs
+- Day 2 Intensive Workshop
+- 8 hours professional development
+- [Date]
+
+Certificates will be emailed within 48 hours
+
+**Bottom line:** Official recognition earned
+
+---
+
+## Group Photo
+
+### Let's capture this moment!
+
+Everyone please gather:
+- Front row: seated
+- Back row: standing
+- Big smiles!
+
+📸
+
+Tag us: #SurveySamplingWorkshop
+
+**Bottom line:** Memories and networks
+
+---
+
+## Thank You!
+
+### It's been an amazing day!
+
+Special thanks to:
+- All participants for engagement
+- Organizing team for logistics
+- Venue for hospitality
+- Funders for support
+
+Safe travels home!
+
+**Bottom line:** Your success is our success
+
+---
+
+## Final Thought
+
+> "All models are wrong, but some are useful"  
+> — George Box
+
+> "The best sample design is the one that gets implemented well"  
+> — Today's lesson
+
+Go forth and sample wisely!
+
+**Bottom line:** You're now stratified sampling experts!
+
+---
+
+## Bonus: R Script Template
+
+```{r bonus_template}
+cat("# Survey Analysis Template
+# Your Name, Date
+
+# Setup ----
+library(tidyverse)
+library(survey)
+set.seed(2024)
+
+# Load data ----
+data <- readRDS('survey_data.rds')
+
+# Create design ----
+design <- svydesign(
+  ids = ~psu_id,
+  strata = ~stratum,
+  weights = ~weight,
+  data = data
+)
+
+# Estimates ----
+results <- svymean(~variable, design)
+
+# Save results ----
+saveRDS(results, 'results.rds')
+")
+```
+
+**Bottom line:** Start with good structure
+
+---
+
+## Bonus: Checklist
+
+### Pre-survey checklist:
+
+☐ Objectives defined  
+☐ Frame assessed  
+☐ Design documented  
+☐ Sample size calculated  
+☐ Budget confirmed  
+☐ Timeline realistic  
+☐ Team trained  
+☐ Pilot completed  
+☐ Quality plan ready  
+☐ Analysis plan ready  
+
+**Bottom line:** Preparation prevents problems
+
+---
+
+## Until Next Time...
+
+### Remember:
+
+- Every survey is learning opportunity
+- Share your knowledge
+- Ask for help when needed
+- Celebrate successes
+- Learn from failures
+
+See you at the next workshop!
+
+**Bottom line:** Journey continues!
+
+---
+
+class: center, middle, inverse
+
+# Workshop Complete!
+
+## Thank you for 350 slides of learning!
+
+### You're now equipped for:
+### Stratified Sampling Excellence
+
+#### #KeepSampling
+
+---

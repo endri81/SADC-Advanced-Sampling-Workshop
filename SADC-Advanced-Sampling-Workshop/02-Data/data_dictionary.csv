@@ -1,0 +1,7 @@
+"Dataset","Description","N_Records","Key_Variables","Used_In_Slides"
+"multiphase_data","Two-phase health survey with screening and detailed follow-up",10000,"chronic_disease, healthcare_cost, phase2_weight","1-50 (Multi-phase)"
+"rotating_panel_data","Rotating panel with 5 panels over 12 waves",15000,"panel, wave, panel_wave, income","51-100 (Rotating panels)"
+"complex_household_data","Complex stratified multi-stage household survey",1491,"stratum, psu_id, household_id, final_weight","101-150 (Complex designs)"
+"domain_estimation_data","Data for domain and small area estimation",5000,"province, district, domain weights","151-200 (Domain estimation)"
+"longitudinal_panel_data","5-wave panel survey with attrition",4085,"person_id, wave, employed, attrition_weight","201-250 (Panel analysis)"
+"mixed_mode_data","Mixed-mode survey with mode effects",3000,"mode, responded, mode_weight","251-300 (Mixed modes)"
