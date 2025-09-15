@@ -1,0 +1,4624 @@
+---
+title: "Day 5: Special Topics and Future Directions"
+subtitle: "Part 1: Special Populations and Hard-to-Reach Groups"
+author: "SADC Survey Sampling Workshop"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: [default, default-fonts]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+      slideNumberFormat: "%current%/%total%"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.width = 10, 
+  fig.height = 5,
+  fig.align = "center",
+  cache = FALSE,
+  comment = "#>"
+)
+
+# Load required packages
+library(tidyverse)
+library(survey)
+library(knitr)
+library(kableExtra)
+library(scales)
+
+# Set theme for plots
+theme_set(theme_minimal(base_size = 12))
+
+# Set seed for reproducibility
+set.seed(2025)
+```
+
+---
+class: center, middle, inverse
+
+# Day 5: Special Topics and Future Directions
+
+## Part 1: Special Populations and Hard-to-Reach Groups
+
+### "Every population counts"
+
+---
+
+## Welcome to Day 5!
+
+### Final Day Agenda:
+
+Part 1: Special Populations (Slides 1-75)  
+Part 2: Emerging Technologies (Slides 76-150)  
+Part 3: Big Data Integration (Slides 151-225)  
+Part 4: Future of Surveys (Slides 226-300)  
+Part 5: Synthesis & Certification (Slides 301-350)  
+
+**Bottom line:** Advanced topics and looking ahead
+
+---
+
+## Journey Recap
+
+```{r journey_recap, echo=FALSE}
+journey <- data.frame(
+  Day = paste("Day", 1:5),
+  Topic = c("Foundations & SRS", "Stratified Sampling", 
+           "Cluster & Multi-stage", "Complex Designs", 
+           "Special Topics"),
+  Skills = c("Basic concepts", "Efficiency gains", "Practical designs",
+            "Integration", "Advanced applications"),
+  Level = c("Beginner", "Intermediate", "Intermediate", "Advanced", "Expert")
+)
+
+kable(journey) %>%
+  kable_styling(font_size = 12) %>%
+  row_spec(5, bold = TRUE, background = "#f39c12")
+```
+
+**Bottom line:** From basics to expertise
+
+---
+
+## Today's Learning Objectives
+
+### By end of Day 5, you will:
+
+1. **Design** surveys for special populations
+2. **Apply** new technologies to surveys
+3. **Integrate** big data with surveys
+4. **Evaluate** future survey methods
+5. **Plan** your implementation strategy
+
+**Bottom line:** Complete your toolkit
+
+---
+
+## Special Populations Overview
+
+```{r special_pops, echo=FALSE}
+populations <- data.frame(
+  Population = c("Hidden/Stigmatized", "Mobile/Nomadic", "Institutional", 
+                "Elite/High income", "Children", "Disabled"),
+  Challenge = c("No frame", "Moving targets", "Access barriers",
+               "Low response", "Consent issues", "Communication"),
+  Prevalence = c("1-5%", "2-10%", "1-3%", "0.1-1%", "20-30%", "10-15%")
+)
+
+kable(populations) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Standard methods often fail
+
+---
+
+## Why Special Methods?
+
+```{r why_special, echo=FALSE, fig.height=5}
+# Compare coverage by method
+methods <- data.frame(
+  Method = rep(c("Standard", "Adapted", "Special"), 3),
+  Population = rep(c("General", "Hard-to-reach", "Hidden"), each = 3),
+  Coverage = c(95, 95, 95,  # General population
+              60, 75, 85,   # Hard-to-reach
+              10, 30, 70)   # Hidden population
+)
+
+ggplot(methods, aes(x = Population, y = Coverage, fill = Method)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Coverage (%)", title = "Coverage by Method and Population") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Special populations need special methods
+
+---
+
+## Hidden Populations
+
+### Definition:
+- No sampling frame exists
+- Size unknown
+- Stigmatized behaviors
+- Legal/social consequences
+
+Examples:
+- Drug users
+- Sex workers
+- Undocumented migrants
+- LGBTQ+ in some contexts
+
+**Bottom line:** Cannot use standard sampling
+
+---
+
+## Respondent-Driven Sampling (RDS)
+
+```{r rds_illustration, echo=FALSE, fig.height=5}
+# Simulate RDS network
+set.seed(2025)
+n_waves <- 4
+nodes_per_wave <- c(3, 9, 27, 81)
+
+# Create network data
+network <- data.frame(
+  wave = rep(1:n_waves, nodes_per_wave),
+  node = 1:sum(nodes_per_wave),
+  x = rnorm(sum(nodes_per_wave)),
+  y = rnorm(sum(nodes_per_wave))
+)
+
+ggplot(network, aes(x = x, y = y, color = factor(wave))) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1", name = "Wave") +
+  labs(title = "RDS Recruitment Waves") +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+
+**Bottom line:** Peer recruitment chains
+
+---
+
+## RDS Process
+
+```{r rds_process, echo=FALSE}
+cat("RDS Implementation Steps:
+
+1. FORMATIVE RESEARCH
+   - Identify population
+   - Understand networks
+   - Establish trust
+
+2. SELECT SEEDS
+   - 5-10 diverse seeds
+   - Different networks
+   - Motivated recruiters
+
+3. RECRUITMENT
+   - Give 3 coupons each
+   - Track who recruits whom
+   - Incentivize participation
+
+4. EQUILIBRIUM
+   - Continue until stable
+   - Usually 6-8 waves
+   - Monitor composition
+
+5. ANALYSIS
+   - RDS-specific weights
+   - Account for network structure")
+```
+
+**Bottom line:** Systematic peer recruitment
+
+---
+
+## RDS Weights
+
+```{r rds_weights, echo=TRUE}
+# RDS weight calculation example
+# Simplified Volz-Heckathorn estimator
+
+# Sample data
+rds_data <- data.frame(
+  id = 1:100,
+  recruiter = c(NA, sample(1:99, 99, replace = TRUE)),
+  network_size = rpois(100, 20) + 5,  # Reported network size
+  outcome = rbinom(100, 1, 0.3)
+)
+
+# Calculate RDS weights (simplified)
+rds_data$weight <- 1 / rds_data$network_size
+rds_data$weight <- rds_data$weight / mean(rds_data$weight)
+
+# Weighted estimate
+weighted_prev <- weighted.mean(rds_data$outcome, rds_data$weight)
+cat("RDS-weighted prevalence:", round(weighted_prev, 3))
+```
+
+**Bottom line:** Adjust for network size
+
+---
+
+## Time-Location Sampling (TLS)
+
+### For populations that congregate:
+
+```{r tls_venues, echo=FALSE}
+venues <- data.frame(
+  Venue_Type = c("Bars/Clubs", "Parks", "Health clinics", 
+                "Community centers", "Transportation hubs"),
+  Population = c("MSM", "Homeless", "Drug users", 
+                "Migrants", "Mobile workers"),
+  Time_Pattern = c("Evenings", "All day", "Mornings", 
+                  "Afternoons", "Peak hours"),
+  Coverage = c("60-80%", "40-60%", "70-90%", "50-70%", "30-50%")
+)
+
+kable(venues) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Sample where they gather
+
+---
+
+## TLS Design
+
+```{r tls_design, echo=FALSE, fig.height=5}
+# Create venue-time schedule
+set.seed(2025)
+venues <- expand.grid(
+  Venue = paste("Venue", 1:5),
+  Day = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
+  Time = c("Morning", "Afternoon", "Evening")
+)
+
+venues$Attendance <- rpois(nrow(venues), 20)
+venues$Selected <- rbinom(nrow(venues), 1, 0.2)
+
+# Sample of schedule
+venues %>%
+  filter(Selected == 1) %>%
+  head(10) %>%
+  select(-Selected) %>%
+  kable() %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Random selection of venue-time units
+
+---
+
+## Capture-Recapture Methods
+
+### Estimate population size:
+
+```{r capture_recapture, echo=TRUE}
+# Lincoln-Petersen estimator
+n1 <- 500  # First capture
+n2 <- 400  # Second capture
+m <- 80    # Recaptured (marked)
+
+N_hat <- (n1 * n2) / m
+se_N <- sqrt(((n1 * n2) * (n1 - m) * (n2 - m)) / (m^3))
+
+cat("Estimated population size:", N_hat, "\n")
+cat("Standard error:", round(se_N, 1), "\n")
+cat("95% CI:", round(N_hat - 1.96*se_N), "-", round(N_hat + 1.96*se_N))
+```
+
+**Bottom line:** Multiple samples estimate total
+
+---
+
+## Multiple Systems Estimation
+
+```{r multiple_systems, echo=FALSE, fig.height=5}
+# Venn diagram for 3 systems
+library(VennDiagram)
+
+# Create data
+set1 <- 1:300
+set2 <- 200:500
+set3 <- 400:700
+
+# Note: VennDiagram not available in this environment
+# Creating alternative visualization
+systems <- data.frame(
+  System = c("Health", "Police", "NGO", "Health+Police", 
+            "Health+NGO", "Police+NGO", "All three"),
+  Count = c(150, 120, 180, 40, 60, 30, 20)
+)
+
+ggplot(systems, aes(x = reorder(System, Count), y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(x = "", y = "Individuals captured",
+       title = "Multiple Systems Capture") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Overlap reveals total
+
+---
+
+## Mobile Populations
+
+### Challenges:
+
+- No fixed address
+- Seasonal movement
+- Cross boundaries
+- Double counting risk
+
+Examples:
+- Pastoralists
+- Seasonal workers
+- Refugees
+- Transport workers
+
+**Bottom line:** Movement complicates sampling
+
+---
+
+## Adaptive Sampling
+
+```{r adaptive_sampling, echo=FALSE, fig.height=5}
+# Show adaptive sampling process
+set.seed(2025)
+grid <- expand.grid(x = 1:10, y = 1:10)
+grid$value <- rbinom(100, 1, 0.1)
+
+# Mark adaptive additions
+grid$selected <- 0
+initial <- sample(1:100, 10)
+grid$selected[initial] <- 1
+
+# Add neighbors of positive cases
+positive <- which(grid$value == 1 & grid$selected == 1)
+for(p in positive) {
+  neighbors <- c(p-1, p+1, p-10, p+10)
+  neighbors <- neighbors[neighbors > 0 & neighbors <= 100]
+  grid$selected[neighbors] <- 2
+}
+
+ggplot(grid, aes(x = x, y = y, fill = factor(selected))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c("white", "lightblue", "darkblue"),
+                   labels = c("Not selected", "Initial", "Adaptive"),
+                   name = "Selection") +
+  labs(title = "Adaptive Sampling Grid") +
+  theme_minimal()
+```
+
+**Bottom line:** Sample more where found
+
+---
+
+## Link-Tracing Designs
+
+```{r link_tracing, echo=FALSE}
+cat("Link-Tracing Methods:
+
+1. SNOWBALL SAMPLING
+   - Start with seeds
+   - Follow all links
+   - No probability basis
+   - Useful for exploration
+
+2. NETWORK SAMPLING
+   - Random walk on network
+   - Probability proportional to degree
+   - Can estimate network properties
+
+3. MULTIPLICITY SAMPLING
+   - Ask about others
+   - Weight by selection probability
+   - Reduces clustering
+
+4. ADAPTIVE CLUSTER
+   - Increase sampling in areas of interest
+   - Better for rare populations")
+```
+
+**Bottom line:** Use social connections
+
+---
+
+## Children in Surveys
+
+### Special considerations:
+
+```{r children_surveys, echo=FALSE}
+considerations <- data.frame(
+  Aspect = c("Consent", "Cognitive", "Setting", "Duration", "Mode"),
+  Young_5_11 = c("Parent + assent", "Concrete thinking", 
+                "Home/school", "15-20 min", "Face-to-face"),
+  Adolescent_12_17 = c("Parent + assent", "Abstract emerging",
+                      "Private space", "30-45 min", "Mixed modes")
+)
+
+kable(considerations) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Age-appropriate methods
+
+---
+
+## Proxy Reporting
+
+```{r proxy_reporting, echo=FALSE, fig.height=5}
+# Compare proxy vs self-report
+comparison <- data.frame(
+  Item = c("School attendance", "Health status", "Nutrition",
+          "Subjective wellbeing", "Risk behaviors"),
+  Correlation = c(0.95, 0.85, 0.80, 0.60, 0.40)
+)
+
+ggplot(comparison, aes(x = reorder(Item, Correlation), y = Correlation)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  geom_hline(yintercept = 0.7, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(x = "", y = "Proxy-Self Correlation",
+       title = "Reliability of Proxy Reporting") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Varies by topic
+
+---
+
+## Institutional Populations
+
+### Types and challenges:
+
+```{r institutional, echo=FALSE}
+institutions <- data.frame(
+  Type = c("Hospitals", "Prisons", "Military", "Nursing homes", "Schools"),
+  Access = c("Ethics approval", "Security clearance", "Permission",
+            "Family consent", "Parent consent"),
+  Sampling_Unit = c("Ward/Bed", "Cell/Block", "Unit/Base", 
+                   "Room/Wing", "Class/Grade"),
+  Response_Issue = c("Too ill", "Coercion", "Hierarchy", 
+                    "Cognitive", "Peer pressure")
+)
+
+kable(institutions) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Layers of complexity
+
+---
+
+## Cluster Sampling in Institutions
+
+```{r institutional_cluster, echo=TRUE}
+# Two-stage sampling in institutions
+# Stage 1: Select institutions
+institutions <- data.frame(
+  inst_id = 1:50,
+  size = rpois(50, 200) + 50,
+  type = sample(c("Hospital", "Prison", "School"), 50, replace = TRUE)
+)
+
+# PPS selection of institutions
+n_inst <- 10
+institutions$prob <- n_inst * institutions$size / sum(institutions$size)
+institutions$selected <- rbinom(50, 1, institutions$prob)
+
+# Stage 2: Select individuals within institutions
+n_per_inst <- 20  # Fixed take per institution
+
+cat("Institutions selected:", sum(institutions$selected), "\n")
+cat("Total sample size:", sum(institutions$selected) * n_per_inst)
+```
+
+**Bottom line:** Account for clustering
+
+---
+
+## Elite Populations
+
+### High-income/High-status challenges:
+
+- Gatekeepers
+- Low response rates
+- Privacy concerns
+- Time constraints
+- Survey fatigue
+
+**Bottom line:** Need special approaches
+
+---
+
+## Strategies for Elites
+
+```{r elite_strategies, echo=FALSE}
+strategies <- data.frame(
+  Strategy = c("Personal approach", "Flexible scheduling", 
+              "Expert interviewers", "Mixed modes", "Incentive donation"),
+  Description = c("CEO to CEO letters", "Their convenience",
+                 "Senior, knowledgeable", "F2F, phone, web",
+                 "Charity donation option"),
+  Success_Rate = c("+15%", "+10%", "+20%", "+12%", "+8%")
+)
+
+kable(strategies) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Tailored approach works
+
+---
+
+## Disabled Populations
+
+### Accessibility requirements:
+
+```{r disability_access, echo=FALSE}
+cat("Survey Accessibility:
+
+VISUAL IMPAIRMENT
+- Large print (18+ pt)
+- High contrast
+- Screen reader compatible
+- Audio options
+- Braille if needed
+
+HEARING IMPAIRMENT
+- Sign language interpreter
+- Written instructions
+- Visual aids
+- Captioned videos
+
+COGNITIVE DISABILITY
+- Simple language
+- Shorter instruments
+- Visual supports
+- Allow supporters
+
+PHYSICAL DISABILITY
+- Accessible venues
+- Remote options
+- Flexible timing
+- Assistive technology")
+```
+
+**Bottom line:** Universal design principles
+
+---
+
+## Cultural Minorities
+
+```{r cultural_minorities, echo=FALSE, fig.height=5}
+# Language and trust issues
+challenges <- data.frame(
+  Group = c("Recent immigrants", "Indigenous", "Religious minorities",
+           "Ethnic minorities"),
+  Language = c(85, 60, 40, 50),
+  Trust = c(40, 35, 45, 50),
+  Access = c(70, 50, 60, 65)
+)
+
+challenges %>%
+  pivot_longer(-Group, names_to = "Challenge", values_to = "Difficulty") %>%
+  ggplot(aes(x = Group, y = Difficulty, fill = Challenge)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set3") +
+  labs(y = "Challenge Level (0-100)",
+       title = "Survey Challenges by Minority Group") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Multiple barriers exist
+
+---
+
+## Community-Based Participatory Research
+
+```{r cbpr, echo=FALSE}
+cbpr_principles <- data.frame(
+  Principle = c("Partnership", "Capacity building", "Mutual benefit",
+               "Co-learning", "Sustainability"),
+  Implementation = c("Community involvement from start",
+                    "Train local researchers",
+                    "Share results and resources",
+                    "Respect local knowledge",
+                    "Build lasting infrastructure")
+)
+
+kable(cbpr_principles) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Work WITH communities
+
+---
+
+## Mixed-Mode for Special Populations
+
+```{r mixed_mode_special, echo=FALSE}
+modes <- data.frame(
+  Population = c("Elderly", "Youth", "Rural", "Urban poor", "Disabled"),
+  Primary = c("Face-to-face", "Web", "Face-to-face", "Phone", "Flexible"),
+  Secondary = c("Phone", "SMS", "Phone", "Face-to-face", "Multiple"),
+  Success = c("75%", "65%", "70%", "60%", "Variable")
+)
+
+kable(modes) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Match mode to population
+
+---
+
+## Ethics for Vulnerable Groups
+
+```{r ethics_vulnerable, echo=FALSE}
+cat("Enhanced Ethical Protections:
+
+1. INFORMED CONSENT
+   - Easy language
+   - Multiple formats
+   - Ongoing process
+   - Right to withdraw
+
+2. RISK ASSESSMENT
+   - Physical risks
+   - Psychological risks
+   - Social risks
+   - Legal risks
+
+3. BENEFIT SHARING
+   - Community feedback
+   - Capacity building
+   - Resource sharing
+   - Policy influence
+
+4. CONFIDENTIALITY
+   - Extra protections
+   - Limited access
+   - Secure storage
+   - Certificate of confidentiality")
+```
+
+**Bottom line:** Higher ethical standards
+
+---
+
+## Sample Size for Rare Populations
+
+```{r rare_sample_size, echo=TRUE}
+# Sample size for rare populations
+# Using exact binomial method
+
+rare_proportion <- 0.02  # 2% prevalence
+precision <- 0.01        # ±1%
+confidence <- 0.95
+
+# Normal approximation (often inadequate)
+z <- qnorm((1 + confidence) / 2)
+n_normal <- (z^2 * rare_proportion * (1 - rare_proportion)) / precision^2
+
+# Exact method (better for rare)
+n_exact <- 1000  # Start value
+while(TRUE) {
+  ci_width <- 2 * qnorm(0.975) * sqrt(rare_proportion * (1 - rare_proportion) / n_exact)
+  if(ci_width <= 2 * precision) break
+  n_exact <- n_exact + 100
+}
+
+cat("Normal approximation:", round(n_normal), "\n")
+cat("Exact method:", n_exact)
+```
+
+**Bottom line:** Need larger samples
+
+---
+
+## Screening Strategies
+
+```{r screening, echo=FALSE, fig.height=5}
+# Cost-effectiveness of screening
+strategies <- data.frame(
+  Strategy = c("Random sample", "Targeted areas", "RDS", "Venue-based"),
+  Screen_Rate = c(2, 10, 30, 25),  # % eligible
+  Cost_per_Screen = c(10, 15, 25, 20),
+  Cost_per_Eligible = c(500, 150, 83, 80)
+)
+
+ggplot(strategies, aes(x = Screen_Rate, y = Cost_per_Eligible)) +
+  geom_point(size = 4, color = "darkred") +
+  geom_text(aes(label = Strategy), vjust = -1, size = 3) +
+  scale_x_continuous(limits = c(0, 35)) +
+  labs(x = "Screening Rate (%)", 
+       y = "Cost per Eligible ($)",
+       title = "Screening Efficiency") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Target high-prevalence areas
+
+---
+
+## Dual-Frame for Special Populations
+
+```{r dual_frame_special, echo=FALSE}
+dual_frame <- data.frame(
+  Frame_A = c("General population", "Probability sample", 
+             "Good coverage", "Lower prevalence"),
+  Frame_B = c("Special population list", "Convenience/venue", 
+             "Partial coverage", "Higher prevalence"),
+  Integration = c("Weight by coverage", "Adjust for overlap",
+                 "Combine estimates", "Account for bias")
+)
+
+kable(t(dual_frame)) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Combine for better coverage
+
+---
+
+## Quality Issues
+
+```{r quality_special, echo=FALSE, fig.height=5}
+# Quality challenges by population
+quality <- data.frame(
+  Population = rep(c("Hidden", "Mobile", "Elite", "Children"), 4),
+  Issue = rep(c("Coverage", "Response", "Measurement", "Processing"), each = 4),
+  Severity = c(9, 8, 5, 6,  # Coverage
+              8, 7, 9, 5,   # Response
+              7, 6, 4, 8,   # Measurement
+              5, 6, 3, 7)   # Processing
+)
+
+ggplot(quality, aes(x = Population, y = Issue, fill = Severity)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "yellow", high = "red") +
+  labs(title = "Quality Challenges Heatmap") +
+  theme_minimal() +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Different populations, different challenges
+
+---
+
+## Exercise: Design for Special Population
+
+### Your task (5 minutes):
+
+Choose a special population in your country:
+1. Define the population
+2. Identify main challenges
+3. Propose sampling method
+4. Address ethical issues
+5. Estimate sample size
+
+**Bottom line:** Apply special methods
+
+---
+
+## Case Study: HIV Key Populations
+
+```{r hiv_case, echo=FALSE}
+cat("Survey Design for HIV Key Populations:
+
+TARGET GROUPS:
+- Men who have sex with men (MSM)
+- Sex workers (SW)
+- People who inject drugs (PWID)
+
+METHODS USED:
+- RDS for MSM and PWID
+- TLS for SW at venues
+- Capture-recapture for size estimation
+
+SAMPLE SIZES:
+- 500-800 per group per city
+- 5-10 seeds for RDS
+- 20-30 venues for TLS
+
+OUTCOMES:
+- HIV prevalence: 15-40%
+- Coverage of services: 30-60%
+- Population size estimates")
+```
+
+**Bottom line:** Multi-method approach
+
+---
+
+## Technology for Special Populations
+
+```{r tech_special, echo=FALSE}
+technology <- data.frame(
+  Technology = c("Mobile apps", "Social media", "GPS tracking",
+                "Biometrics", "Blockchain"),
+  Application = c("Youth surveys", "Hidden populations", "Mobile groups",
+                 "Unique identification", "Secure incentives"),
+  Benefit = c("Engagement", "Recruitment", "Location verification",
+             "Prevent duplicates", "Trust building")
+)
+
+kable(technology) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Technology enables access
+
+---
+
+## Weighting for Special Populations
+
+```{r special_weights, echo=TRUE}
+# Complex weighting for RDS
+# Simplified example
+
+# RDS data with network information
+rds_sample <- data.frame(
+  id = 1:200,
+  recruiter_id = c(NA, NA, NA, sample(1:197, 197, replace = TRUE)),
+  network_size = rpois(200, 25) + 5,
+  wave = c(1, 1, 1, rep(2:6, length.out = 197))
+)
+
+# Calculate weights
+rds_sample$degree_weight <- mean(rds_sample$network_size) / rds_sample$network_size
+rds_sample$recruitment_weight <- ifelse(rds_sample$wave == 1, 1, 
+                                       1 / table(rds_sample$recruiter_id)[as.character(rds_sample$recruiter_id)])
+
+# Combined weight
+rds_sample$final_weight <- rds_sample$degree_weight * 
+                           ifelse(is.na(rds_sample$recruitment_weight), 1, 
+                                 rds_sample$recruitment_weight)
+
+summary(rds_sample$final_weight)
+```
+
+**Bottom line:** Account for selection process
+
+---
+
+## Validation Studies
+
+```{r validation, echo=FALSE}
+validation <- data.frame(
+  Method = c("RDS", "TLS", "Capture-recapture", "Snowball"),
+  Assumption = c("Random recruitment", "Complete venue list",
+                "Closed population", "Network connectivity"),
+  Validation = c("Bottleneck plots", "Formative research",
+                "Multiple systems", "Seed diversity"),
+  Robustness = c("Medium", "High", "High", "Low")
+)
+
+kable(validation) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Validate assumptions
+
+---
+
+## Reporting Guidelines
+
+```{r reporting_special, echo=FALSE}
+cat("STROBE-RDS Checklist:
+
+1. TITLE/ABSTRACT
+   - Identify as RDS/special method
+   - Report adjusted estimates
+
+2. METHODS
+   - Formative research conducted
+   - Seed selection process
+   - Recruitment procedures
+   - Equilibrium assessment
+   - Weight calculation
+
+3. RESULTS
+   - Recruitment chains
+   - Sample characteristics vs seeds
+   - Convergence plots
+   - Weighted and unweighted
+
+4. DISCUSSION
+   - Assumption violations
+   - Generalizability limits
+   - Comparison to other methods")
+```
+
+**Bottom line:** Transparent reporting
+
+---
+
+## Cost Considerations
+
+```{r cost_special, echo=FALSE, fig.height=5}
+# Cost comparison
+costs <- data.frame(
+  Method = c("Household", "RDS", "TLS", "Online", "Mixed"),
+  Setup = c(20000, 30000, 25000, 15000, 35000),
+  PerUnit = c(50, 80, 70, 20, 65),
+  Total_1000 = c(70000, 110000, 95000, 35000, 100000)
+)
+
+costs %>%
+  select(-Total_1000) %>%
+  pivot_longer(-Method, names_to = "Cost_Type", values_to = "Amount") %>%
+  ggplot(aes(x = Method, y = Amount/1000, fill = Cost_Type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(y = "Cost ($1000s)", title = "Cost Structure by Method") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Special methods cost more
+
+---
+
+## Integration with Routine Systems
+
+```{r integration_systems, echo=FALSE}
+integration <- data.frame(
+  System = c("Health facilities", "Schools", "Social services",
+            "Justice system"),
+  Data = c("Service users", "Enrollment", "Beneficiaries", "Cases"),
+  Linkage = c("Unique ID", "Student ID", "Benefit number", "Case number"),
+  Coverage = c("60-80%", "90-95%", "40-60%", "20-40%")
+)
+
+kable(integration) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Leverage existing systems
+
+---
+
+## Part 1 Summary
+
+### You've learned:
+
+✅ Hidden population methods (RDS, TLS)  
+✅ Mobile and migrant strategies  
+✅ Institutional sampling approaches  
+✅ Vulnerable group protections  
+✅ Technology applications  
+
+**Bottom line:** Every population is reachable
+
+---
+
+## Key Messages
+
+```{r key_messages_part1, echo=FALSE}
+messages <- data.frame(
+  Number = 1:5,
+  Message = c("Standard methods often fail for special populations",
+             "Multiple methods may be needed",
+             "Ethics are paramount for vulnerable groups",
+             "Community engagement is essential",
+             "Document limitations clearly")
+)
+
+kable(messages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Adapt methods to population
+
+---
+
+## Group Discussion
+
+### Share experiences (5 minutes):
+
+1. What special populations exist in your country?
+2. Which methods have you tried?
+3. What worked? What didn't?
+4. Ethical challenges faced?
+
+One insight per table!
+
+**Bottom line:** Learn from each other
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### When we return:
+- Emerging technologies
+- Digital data collection
+- AI and machine learning
+
+### Think about:
+Your hardest-to-reach population
+
+**Bottom line:** Rest and reflect
+
+---
+
+class: center, middle, inverse
+
+# End of Part 1
+
+## Slides 1-75 Complete
+
+### Next: Part 2 - Emerging Technologies
+
+---
+
+---
+
+## Welcome Back!
+
+### Part 2: Emerging Technologies and Digital Data Collection
+
+Topics for next 75 slides:
+- Mobile data collection
+- Web and online surveys
+- AI and machine learning
+- Sensor and passive data
+- Digital transformation
+
+**Bottom line:** Technology reshaping surveys
+
+---
+
+## Digital Revolution in Surveys
+
+```{r digital_timeline, echo=FALSE, fig.height=5}
+timeline <- data.frame(
+  Year = c(1990, 2000, 2010, 2020, 2025),
+  Technology = c("CATI", "Web surveys", "Smartphones", "AI/ML", "IoT/Sensors"),
+  Adoption = c(20, 40, 60, 80, 90)
+)
+
+ggplot(timeline, aes(x = Year, y = Adoption)) +
+  geom_line(size = 2, color = "darkblue") +
+  geom_point(size = 4) +
+  geom_text(aes(label = Technology), vjust = -1, size = 3) +
+  scale_x_continuous(breaks = timeline$Year) +
+  labs(y = "Adoption Rate (%)",
+       title = "Technology Adoption in Surveys") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Accelerating change
+
+---
+
+## Mobile Data Collection
+
+### CAPI advantages:
+
+```{r capi_advantages, echo=FALSE}
+advantages <- data.frame(
+  Feature = c("Real-time validation", "GPS coordinates", "Photo capture",
+             "Skip patterns", "Offline capability", "Instant upload"),
+  Benefit = c("Fewer errors", "Location verification", "Quality evidence",
+             "Complex routing", "Remote areas", "Quick processing"),
+  Impact = c("-50% errors", "+100% accuracy", "+Quality", 
+            "-30% time", "+Coverage", "-7 days")
+)
+
+kable(advantages) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Quality and efficiency gains
+
+---
+
+## CAPI Platforms Comparison
+
+```{r capi_platforms, echo=FALSE}
+platforms <- data.frame(
+  Platform = c("SurveyCTO", "ODK", "KoBoToolbox", "Survey Solutions"),
+  Cost = c("$$$", "Free", "Free", "Free"),
+  Features = c("Full", "Basic+", "Humanitarian", "Advanced"),
+  Support = c("Professional", "Community", "Limited", "World Bank"),
+  Offline = c("Yes", "Yes", "Yes", "Yes")
+)
+
+kable(platforms) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Multiple options available
+
+---
+
+## Designing for Mobile
+
+```{r mobile_design, echo=FALSE}
+cat("Mobile Survey Design Principles:
+
+1. SCREEN OPTIMIZATION
+   - Single column layout
+   - Large touch targets (44px)
+   - Minimal scrolling
+   - Responsive design
+
+2. QUESTION FORMAT
+   - One question per screen
+   - Simple response options
+   - Avoid grids/matrices
+   - Visual aids when helpful
+
+3. NAVIGATION
+   - Clear progress indicator
+   - Back button always visible
+   - Save and continue option
+   - Offline capability
+
+4. DATA EFFICIENCY
+   - Compress images
+   - Minimize downloads
+   - Cache resources
+   - Batch uploads")
+```
+
+**Bottom line:** Mobile-first design
+
+---
+
+## GPS and Location Data
+
+```{r gps_data, echo=TRUE}
+# Using GPS for survey verification
+library(sf)
+library(ggplot2)
+
+# Simulate survey locations
+set.seed(2025)
+survey_locations <- data.frame(
+  household_id = 1:100,
+  longitude = runif(100, 28.0, 29.0),
+  latitude = runif(100, -26.0, -25.0),
+  timestamp = Sys.time() + runif(100, 0, 86400),
+  interviewer = sample(1:10, 100, replace = TRUE)
+)
+
+# Check for clustering (potential fraud)
+locations_sf <- st_as_sf(survey_locations, 
+                         coords = c("longitude", "latitude"),
+                         crs = 4326)
+
+# Calculate distances between consecutive interviews
+survey_locations$prev_dist <- c(NA, st_distance(locations_sf[-100,], 
+                                                locations_sf[-1,], 
+                                                by_element = TRUE))
+
+head(survey_locations[, c("household_id", "interviewer", "prev_dist")])
+```
+
+**Bottom line:** GPS enables quality control
+
+---
+
+## Paradata from Digital Collection
+
+```{r paradata_digital, echo=FALSE, fig.height=5}
+# Types of paradata collected
+paradata_types <- data.frame(
+  Type = c("Timing", "Edits", "GPS", "Device", "Network", "App usage"),
+  Instances = c(450, 230, 380, 100, 290, 410)
+)
+
+ggplot(paradata_types, aes(x = reorder(Type, Instances), y = Instances)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(x = "", y = "Data Points per Interview",
+       title = "Paradata Collection in Digital Surveys") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Rich process data
+
+---
+
+## Web Survey Design
+
+### Response rate factors:
+
+```{r web_response, echo=FALSE}
+factors <- data.frame(
+  Factor = c("Subject line", "Personalization", "Mobile-friendly",
+            "Reminder timing", "Incentive mention", "Survey length"),
+  Impact = c("+5-10%", "+3-7%", "+15-20%", "+10-15%", "+8-12%", "-20-30%"),
+  Implementation = c("A/B test", "Use name", "Responsive", 
+                    "3-7 days", "Upfront", "State clearly")
+)
+
+kable(factors) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Design affects participation
+
+---
+
+## Online Panel Management
+
+```{r panel_management, echo=FALSE, fig.height=5}
+# Panel attrition over time
+months <- 1:12
+active <- 10000 * (0.95)^(months-1)
+engaged <- 10000 * (0.90)^(months-1)
+responsive <- 10000 * (0.85)^(months-1)
+
+data.frame(
+  Month = rep(months, 3),
+  Panelists = c(active, engaged, responsive),
+  Category = rep(c("Registered", "Engaged", "Responsive"), each = 12)
+) %>%
+  ggplot(aes(x = Month, y = Panelists, color = Category)) +
+  geom_line(size = 1.5) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "Online Panel Attrition") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Continuous recruitment needed
+
+---
+
+## AI in Survey Design
+
+```{r ai_survey, echo=FALSE}
+ai_applications <- data.frame(
+  Application = c("Question wording", "Sample optimization", 
+                 "Fraud detection", "Response prediction",
+                 "Text analysis", "Translation"),
+  Technology = c("NLP", "ML optimization", "Anomaly detection",
+                "Predictive models", "Sentiment analysis", "Neural MT"),
+  Status = c("Testing", "Operational", "Operational", 
+            "Pilot", "Operational", "Testing")
+)
+
+kable(ai_applications) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** AI augments capabilities
+
+---
+
+## Machine Learning for Quality
+
+```{r ml_quality, echo=TRUE}
+# Simple fraud detection with ML
+library(randomForest)
+
+# Create training data
+set.seed(2025)
+training_data <- data.frame(
+  interview_duration = c(rnorm(900, 30, 10), rnorm(100, 10, 3)),
+  straight_lining = c(rbinom(900, 10, 0.1), rbinom(100, 10, 0.6)),
+  gps_variance = c(rnorm(900, 100, 30), rnorm(100, 5, 2)),
+  missing_rate = c(rbeta(900, 2, 20), rbeta(100, 5, 5)),
+  fraudulent = c(rep(0, 900), rep(1, 100))
+)
+
+# Train model
+fraud_model <- randomForest(factor(fraudulent) ~ ., 
+                           data = training_data,
+                           ntree = 100)
+
+# Feature importance
+importance(fraud_model)
+```
+
+**Bottom line:** ML identifies patterns
+
+---
+
+## Chatbots and Conversational Surveys
+
+```{r chatbot_survey, echo=FALSE}
+cat("Conversational Survey Design:
+
+USER: Hi!
+BOT: Hello! I'm here to learn about your shopping habits. 
+     This will take about 5 minutes. Ready to start?
+
+USER: Sure
+BOT: Great! First, how often do you shop online?
+     Daily / Weekly / Monthly / Rarely
+
+USER: Weekly
+BOT: Thanks! What type of products do you usually buy online?
+     You can mention multiple categories.
+
+USER: Clothes and electronics mostly
+BOT: Interesting! For clothing, which factors are most important?
+     Price / Quality / Brand / Style / Sustainability
+
+ADVANTAGES:
+- Natural interaction
+- Higher engagement
+- Clarification possible
+- Personality matching")
+```
+
+**Bottom line:** More engaging experience
+
+---
+
+## Voice and Audio Surveys
+
+```{r voice_surveys, echo=FALSE, fig.height=5}
+# Voice vs traditional response rates
+methods <- data.frame(
+  Method = c("IVR", "Voice assistant", "Phone", "SMS"),
+  Response_Rate = c(8, 12, 25, 15),
+  Cost = c(5, 10, 50, 3),
+  Demographics = c("Older", "Tech-savvy", "Broad", "Younger")
+)
+
+ggplot(methods, aes(x = Cost, y = Response_Rate)) +
+  geom_point(size = 5, color = "darkgreen") +
+  geom_text(aes(label = Method), vjust = -1) +
+  labs(x = "Cost per Complete ($)", y = "Response Rate (%)",
+       title = "Voice Survey Methods") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Voice expanding options
+
+---
+
+## Social Media Recruitment
+
+```{r social_recruitment, echo=FALSE}
+platforms <- data.frame(
+  Platform = c("Facebook", "Instagram", "Twitter", "LinkedIn", "TikTok"),
+  Reach = c("2.9B", "2B", "450M", "310M", "1B"),
+  Demographics = c("25-54", "18-34", "25-49", "25-49", "16-24"),
+  Cost_CPM = c("$7", "$8", "$6", "$33", "$10"),
+  Targeting = c("Excellent", "Good", "Basic", "Professional", "Growing")
+)
+
+kable(platforms) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Targeted recruitment possible
+
+---
+
+## Passive Data Collection
+
+```{r passive_data, echo=FALSE}
+cat("Types of Passive Data:
+
+1. DIGITAL TRACES
+   - Web browsing
+   - App usage
+   - Search queries
+   - Social media activity
+
+2. SENSORS
+   - Smartphone accelerometer
+   - GPS location
+   - Wearable devices
+   - Smart home data
+
+3. TRANSACTIONS
+   - Purchase records
+   - Banking data
+   - Utility usage
+   - Transport cards
+
+4. ENVIRONMENTAL
+   - Air quality sensors
+   - Traffic counters
+   - Weather stations
+   - Satellite imagery")
+```
+
+**Bottom line:** Data without asking
+
+---
+
+## Smartphone Sensors
+
+```{r smartphone_sensors, echo=TRUE}
+# Simulating accelerometer data for activity recognition
+set.seed(2025)
+time <- seq(0, 10, by = 0.1)
+walking <- sin(2 * pi * 2 * time) + rnorm(length(time), 0, 0.1)
+running <- 2 * sin(2 * pi * 5 * time) + rnorm(length(time), 0, 0.2)
+sitting <- rnorm(length(time), 0, 0.05)
+
+activity_data <- data.frame(
+  time = rep(time, 3),
+  acceleration = c(walking, running, sitting),
+  activity = rep(c("Walking", "Running", "Sitting"), each = length(time))
+)
+
+# Simple classification based on variance
+tapply(activity_data$acceleration, activity_data$activity, var)
+```
+
+**Bottom line:** Sensors reveal behavior
+
+---
+
+## Wearables and IoT
+
+```{r wearables_iot, echo=FALSE, fig.height=5}
+# Data volume from different sources
+sources <- data.frame(
+  Device = c("Fitness tracker", "Smartwatch", "Smart scale",
+            "Sleep monitor", "Smart home"),
+  Data_Points_Day = c(100000, 250000, 10, 5000, 50000),
+  Battery_Life = c(7, 1, 180, 30, 365)
+)
+
+ggplot(sources, aes(x = Battery_Life, y = Data_Points_Day/1000)) +
+  geom_point(size = 4, color = "purple") +
+  geom_text(aes(label = Device), vjust = -1, size = 3) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Battery Life (days)", y = "Data Points per Day (1000s)",
+       title = "IoT Device Characteristics") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Trade-offs in device choice
+
+---
+
+## Data Linkage
+
+```{r data_linkage, echo=FALSE}
+linkage_types <- data.frame(
+  Type = c("Deterministic", "Probabilistic", "Machine learning", "Blockchain"),
+  Accuracy = c("100%", "85-95%", "90-98%", "100%"),
+  Requirements = c("Exact identifiers", "Multiple variables", 
+                  "Training data", "Distributed ledger"),
+  Use_Case = c("Admin records", "Survey matching", 
+              "Complex linkage", "Consent tracking")
+)
+
+kable(linkage_types) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Multiple linkage methods
+
+---
+
+## Privacy and Ethics
+
+```{r privacy_ethics, echo=FALSE}
+cat("Digital Data Privacy Framework:
+
+1. CONSENT
+   - Informed and specific
+   - Granular control
+   - Easy withdrawal
+   - Re-consent for new uses
+
+2. DATA MINIMIZATION
+   - Collect only necessary
+   - Delete when not needed
+   - Aggregate when possible
+   - Pseudonymize/anonymize
+
+3. SECURITY
+   - Encryption at rest
+   - Secure transmission
+   - Access controls
+   - Audit trails
+
+4. TRANSPARENCY
+   - Clear privacy policy
+   - Data use disclosure
+   - Rights information
+   - Contact for questions")
+```
+
+**Bottom line:** Privacy by design
+
+---
+
+## GDPR and Data Protection
+
+```{r gdpr_compliance, echo=FALSE}
+gdpr_requirements <- data.frame(
+  Requirement = c("Lawful basis", "Purpose limitation", "Data minimization",
+                 "Accuracy", "Storage limitation", "Security"),
+  Implementation = c("Consent or legitimate interest", "Specify in advance",
+                    "Only necessary data", "Keep updated", 
+                    "Delete when done", "Technical measures"),
+  Penalty = c("4% revenue", "4% revenue", "4% revenue",
+             "2% revenue", "2% revenue", "4% revenue")
+)
+
+kable(gdpr_requirements) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Compliance mandatory
+
+---
+
+## Blockchain for Surveys
+
+```{r blockchain_surveys, echo=FALSE, fig.height=5}
+# Blockchain benefits
+benefits <- data.frame(
+  Aspect = c("Consent", "Incentives", "Data integrity", 
+            "Deduplication", "Audit trail"),
+  Traditional = c(3, 2, 3, 2, 3),
+  Blockchain = c(5, 5, 5, 5, 5)
+)
+
+benefits %>%
+  pivot_longer(-Aspect, names_to = "System", values_to = "Score") %>%
+  ggplot(aes(x = Aspect, y = Score, fill = System)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Capability Score (1-5)",
+       title = "Blockchain Benefits for Surveys") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Emerging applications
+
+---
+
+## Virtual Reality Surveys
+
+```{r vr_surveys, echo=FALSE}
+cat("VR Survey Applications:
+
+1. PRODUCT TESTING
+   - Virtual store shelves
+   - Package design testing
+   - User experience studies
+   - Sensory evaluation
+
+2. BEHAVIORAL RESEARCH
+   - Risk perception
+   - Environmental psychology
+   - Social interactions
+   - Training evaluation
+
+3. SENSITIVE TOPICS
+   - Reduce social desirability
+   - Anonymous avatars
+   - Immersive scenarios
+   - Controlled environment
+
+CHALLENGES:
+- Equipment cost
+- Motion sickness
+- Technical skills
+- Limited reach")
+```
+
+**Bottom line:** New research possibilities
+
+---
+
+## Cloud Computing
+
+```{r cloud_computing, echo=FALSE}
+cloud_services <- data.frame(
+  Service = c("Storage", "Computing", "Database", "Analytics", "ML/AI"),
+  Provider = c("S3/Blob", "EC2/VM", "RDS/SQL", "BigQuery", "SageMaker"),
+  Cost_Model = c("Per GB", "Per hour", "Per query", "Per TB", "Per prediction"),
+  Survey_Use = c("Data storage", "Processing", "Responses", "Analysis", "Predictions")
+)
+
+kable(cloud_services) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Scalable infrastructure
+
+---
+
+## Real-time Analytics
+
+```{r realtime_analytics, echo=TRUE}
+# Simulate real-time survey monitoring
+library(ggplot2)
+
+# Generate streaming data
+create_stream_data <- function(n = 100) {
+  data.frame(
+    timestamp = Sys.time() + seq(0, 3600, length.out = n),
+    response_rate = 20 + cumsum(rnorm(n, 0.5, 2)),
+    completes = cumsum(rpois(n, 5))
+  )
+}
+
+stream_data <- create_stream_data()
+
+# Dashboard metrics
+current_rr <- tail(stream_data$response_rate, 1)
+total_completes <- tail(stream_data$completes, 1)
+hourly_rate <- diff(range(stream_data$completes))
+
+cat("REAL-TIME DASHBOARD\n")
+cat("Response Rate:", round(current_rr, 1), "%\n")
+cat("Completes:", total_completes, "\n")
+cat("Hourly Rate:", hourly_rate, "per hour\n")
+```
+
+**Bottom line:** Instant insights
+
+---
+
+## API Integration
+
+```{r api_integration, echo=FALSE}
+cat("Survey API Ecosystem:
+
+# Sample REST API call
+GET /api/v1/surveys/12345/responses
+Headers:
+  Authorization: Bearer token123
+  Accept: application/json
+
+Response:
+{
+  'survey_id': '12345',
+  'responses': [
+    {
+      'respondent_id': 'R001',
+      'timestamp': '2025-01-15T10:30:00Z',
+      'answers': {...},
+      'metadata': {...}
+    }
+  ],
+  'pagination': {
+    'page': 1,
+    'total': 523
+  }
+}
+
+INTEGRATIONS:
+- CRM systems
+- Email platforms
+- Analytics tools
+- Data warehouses")
+```
+
+**Bottom line:** Seamless data flow
+
+---
+
+## Augmented Reality (AR)
+
+```{r ar_surveys, echo=FALSE, fig.height=5}
+# AR use cases
+use_cases <- data.frame(
+  Application = c("Product placement", "Space planning", 
+                 "Navigation testing", "Education assessment"),
+  Engagement = c(85, 78, 82, 90),
+  Accuracy = c(92, 88, 85, 87)
+)
+
+use_cases %>%
+  pivot_longer(-Application, names_to = "Metric", values_to = "Score") %>%
+  ggplot(aes(x = Application, y = Score, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set3") +
+  labs(y = "Score (%)", title = "AR Survey Applications") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Enhanced engagement
+
+---
+
+## Digital Divide Considerations
+
+```{r digital_divide, echo=FALSE}
+divide_factors <- data.frame(
+  Factor = c("Internet access", "Device ownership", "Digital literacy",
+            "Data costs", "Tech support"),
+  Urban = c(85, 78, 70, 60, 65),
+  Rural = c(45, 52, 40, 35, 30),
+  Gap = c(40, 26, 30, 25, 35)
+)
+
+kable(divide_factors) %>%
+  kable_styling(font_size = 11) %>%
+  column_spec(4, bold = TRUE, color = "red")
+```
+
+**Bottom line:** Equity challenges remain
+
+---
+
+## Hybrid Data Collection
+
+```{r hybrid_collection, echo=FALSE}
+cat("Hybrid Strategy Example:
+
+PHASE 1: DIGITAL FIRST
+- Web survey launch
+- SMS invitations
+- Social media ads
+- Email reminders
+
+PHASE 2: TELEPHONE FOLLOW-UP
+- Non-respondents
+- Partial completes
+- Older demographics
+- Rural areas
+
+PHASE 3: FACE-TO-FACE
+- Final non-response
+- Complex cases
+- Quality checks
+- Hard-to-reach
+
+RESULTS:
+- 45% Web
+- 25% Phone
+- 30% F2F
+- 78% total response rate")
+```
+
+**Bottom line:** Multi-mode maximizes coverage
+
+---
+
+## Quality in Digital Surveys
+
+```{r digital_quality, echo=FALSE, fig.height=5}
+# Quality indicators
+indicators <- data.frame(
+  Indicator = c("Speeding", "Straight-lining", "Item missing",
+               "Attention checks", "Open-end quality"),
+  Threshold = c(5, 10, 5, 90, 80),
+  Actual = c(8, 7, 3, 85, 75)
+)
+
+indicators %>%
+  pivot_longer(c(Threshold, Actual), names_to = "Type", values_to = "Value") %>%
+  ggplot(aes(x = Indicator, y = Value, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("red", "blue")) +
+  labs(y = "Percentage", title = "Digital Survey Quality Metrics") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Monitor multiple indicators
+
+---
+
+## Exercise: Design Digital Survey
+
+### Your task (5 minutes):
+
+Design a digital data collection strategy:
+1. Choose target population
+2. Select primary mode
+3. Plan backup modes
+4. Address digital divide
+5. Quality control measures
+
+**Bottom line:** Apply digital methods
+
+---
+
+## Case Study: COVID-19 Rapid Surveys
+
+```{r covid_case, echo=FALSE}
+cat("COVID-19 Survey Innovation:
+
+CHALLENGE:
+- No face-to-face possible
+- Urgent data needs
+- Population in flux
+- Digital divide exposed
+
+SOLUTION:
+- Rapid web panels
+- SMS micro-surveys
+- IVR for basic phones
+- Social media recruitment
+
+INNOVATIONS:
+- Daily data collection
+- Real-time dashboards
+- Automated reporting
+- Open data sharing
+
+RESULTS:
+- 50+ countries
+- Weekly updates
+- Policy influence
+- Method validation")
+```
+
+**Bottom line:** Crisis drove innovation
+
+---
+
+## Future Technologies
+
+```{r future_tech, echo=FALSE}
+future <- data.frame(
+  Technology = c("Quantum computing", "5G networks", "Brain interfaces",
+                "Holographic displays", "Autonomous agents"),
+  Timeline = c("5-10 years", "Now-2 years", "10-15 years",
+              "3-5 years", "2-5 years"),
+  Impact = c("Encryption/processing", "Speed/coverage", "Direct measurement",
+            "Immersive surveys", "Automated collection")
+)
+
+kable(future) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Continuous evolution
+
+---
+
+## Implementation Roadmap
+
+```{r implementation_roadmap, echo=FALSE}
+roadmap <- data.frame(
+  Phase = c("Assess", "Pilot", "Scale", "Optimize", "Innovate"),
+  Timeline = c("Month 1", "Months 2-3", "Months 4-9", "Months 10-12", "Ongoing"),
+  Activities = c("Current state analysis", "Test new methods",
+                "Roll out successful", "Refine processes", "Explore emerging"),
+  Success = c("Baseline established", "Proof of concept",
+             "50% digital", "80% efficiency", "Leading edge")
+)
+
+kable(roadmap) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Phased approach works
+
+---
+
+## Digital Skills Development
+
+```{r skills_development, echo=FALSE}
+skills <- data.frame(
+  Level = c("Basic", "Intermediate", "Advanced", "Expert"),
+  Technical = c("Use tablets", "Configure surveys", "API integration", "ML models"),
+  Analytical = c("Descriptive stats", "Validation", "Predictive", "AI/ML"),
+  Time = c("1 month", "3 months", "6 months", "1+ years")
+)
+
+kable(skills) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Continuous learning essential
+
+---
+
+## Part 2 Summary
+
+### You've learned:
+
+✅ Mobile and web survey design  
+✅ AI and ML applications  
+✅ Passive data collection  
+✅ Privacy and ethics  
+✅ Emerging technologies  
+
+**Bottom line:** Digital transformation understood
+
+---
+
+## Key Messages
+
+```{r key_messages_part2, echo=FALSE}
+messages <- data.frame(
+  Number = 1:5,
+  Message = c("Digital methods improve quality and efficiency",
+             "Privacy and ethics are paramount",
+             "Digital divide requires hybrid approaches",
+             "Continuous innovation is necessary",
+             "Skills development is critical")
+)
+
+kable(messages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Embrace digital responsibly
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### When we return:
+- Big data integration
+- Administrative data
+- Combining sources
+
+### Think about:
+What digital method excites you most?
+
+**Bottom line:** Rest and process
+
+---
+
+class: center, middle, inverse
+
+# End of Part 2
+
+## Slides 76-150 Complete
+
+### Next: Part 3 - Big Data Integration
+
+---
+
+---
+
+## Welcome to Part 3!
+
+### Big Data Integration and Administrative Data
+
+Topics for next 75 slides:
+- Big data sources
+- Administrative data linkage
+- Combining surveys with big data
+- Quality and validation
+- Statistical modeling
+
+**Bottom line:** Integrating multiple data sources
+
+---
+
+## Big Data Landscape
+
+```{r bigdata_landscape, echo=FALSE, fig.height=5}
+# Types and volumes of big data
+big_data <- data.frame(
+  Source = c("Social media", "Mobile phones", "Satellites", 
+            "Transactions", "Sensors", "Admin records"),
+  Volume_TB = c(500, 2500, 1000, 5000, 3000, 800),
+  Velocity = c("Real-time", "Continuous", "Daily", 
+              "Real-time", "Continuous", "Monthly")
+)
+
+ggplot(big_data, aes(x = reorder(Source, Volume_TB), y = Volume_TB)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(x = "", y = "Data Volume (TB/day)",
+       title = "Big Data Sources and Volumes") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Massive data available
+
+---
+
+## Survey vs Big Data
+
+```{r survey_vs_bigdata, echo=FALSE}
+comparison <- data.frame(
+  Characteristic = c("Design", "Coverage", "Variables", "Quality", 
+                    "Timeliness", "Cost"),
+  Surveys = c("Controlled", "Representative", "Specific", "High", 
+             "Periodic", "High"),
+  Big_Data = c("Organic", "Selective", "Limited", "Variable", 
+              "Real-time", "Low")
+)
+
+kable(comparison) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Complementary strengths
+
+---
+
+## Administrative Data Sources
+
+```{r admin_sources, echo=FALSE}
+admin_data <- data.frame(
+  Source = c("Tax records", "Health records", "Education", 
+            "Social security", "Vital statistics", "Business registers"),
+  Coverage = c("Workers", "Patients", "Students", 
+              "Beneficiaries", "Population", "Businesses"),
+  Frequency = c("Annual", "Continuous", "Annual", 
+                "Monthly", "Continuous", "Quarterly"),
+  Quality = c("High", "High", "Medium", "High", "High", "Medium")
+)
+
+kable(admin_data) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** High-quality routine data
+
+---
+
+## Mobile Phone Data
+
+```{r mobile_data, echo=FALSE}
+cat("Call Detail Records (CDR) Applications:
+
+DATA AVAILABLE:
+- Caller/receiver ID (anonymized)
+- Timestamp
+- Duration
+- Cell tower location
+- Data usage
+
+SURVEY APPLICATIONS:
+1. Population density estimation
+2. Migration patterns
+3. Economic activity proxy
+4. Disaster response
+5. Social network analysis
+
+CHALLENGES:
+- Privacy concerns
+- Representativeness
+- Proprietary data
+- Legal frameworks")
+```
+
+**Bottom line:** Rich behavioral data
+
+---
+
+## CDR Analysis Example
+
+```{r cdr_analysis, echo=TRUE}
+# Simulate CDR data analysis
+set.seed(2025)
+
+# Generate synthetic CDR data
+cdr_data <- data.frame(
+  user_id = sample(1:10000, 50000, replace = TRUE),
+  timestamp = as.POSIXct("2025-01-01") + runif(50000, 0, 86400*30),
+  tower_id = sample(1:500, 50000, replace = TRUE),
+  duration = rexp(50000, rate = 1/180)  # Average 3 minute calls
+)
+
+# Calculate mobility indicators
+mobility <- cdr_data %>%
+  group_by(user_id) %>%
+  summarise(
+    n_calls = n(),
+    n_towers = n_distinct(tower_id),
+    radius_gyration = sd(tower_id) * 0.5  # Simplified
+  )
+
+head(mobility)
+```
+
+**Bottom line:** Mobility patterns revealed
+
+---
+
+## Satellite Data
+
+```{r satellite_data, echo=FALSE, fig.height=5}
+# Applications of satellite data
+applications <- data.frame(
+  Application = c("Crop monitoring", "Urban growth", "Poverty mapping",
+                 "Disaster assessment", "Deforestation"),
+  Resolution_m = c(10, 1, 30, 3, 10),
+  Frequency_days = c(5, 30, 16, 1, 5),
+  Cost = c("Free", "$$$", "Free", "$$$$", "Free")
+)
+
+ggplot(applications, aes(x = Resolution_m, y = Frequency_days)) +
+  geom_point(size = 5, aes(color = Application)) +
+  geom_text(aes(label = Application), vjust = -1, size = 3) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Spatial Resolution (meters)", 
+       y = "Revisit Frequency (days)",
+       title = "Satellite Data Trade-offs") +
+  theme(legend.position = "none",
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Balance resolution and frequency
+
+---
+
+## Nighttime Lights
+
+```{r nightlights, echo=TRUE}
+# Using nighttime lights as economic proxy
+library(raster)
+
+# Simulate nightlight data
+set.seed(2025)
+districts <- data.frame(
+  district = 1:50,
+  nightlight_intensity = rlnorm(50, 3, 1),
+  survey_gdp = rlnorm(50, 10, 0.5)
+)
+
+# Correlation with economic indicators
+cor_test <- cor.test(log(districts$nightlight_intensity), 
+                     districts$survey_gdp)
+
+cat("Correlation between nightlights and GDP:", 
+    round(cor_test$estimate, 3), "\n")
+cat("P-value:", format.pval(cor_test$p.value))
+```
+
+**Bottom line:** Proxy for economic activity
+
+---
+
+## Social Media Data
+
+```{r social_media, echo=FALSE}
+social_data <- data.frame(
+  Platform = c("Twitter/X", "Facebook", "Instagram", "LinkedIn"),
+  Data_Type = c("Text, networks", "Posts, reactions", "Images, stories", 
+               "Professional"),
+  API_Access = c("Limited", "Restricted", "Limited", "Professional"),
+  Survey_Use = c("Sentiment", "Recruitment", "Visual analysis", "Elite samples")
+)
+
+kable(social_data) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Rich but biased data
+
+---
+
+## Text Mining Social Media
+
+```{r text_mining, echo=TRUE}
+# Simple sentiment analysis
+library(tidytext)
+
+# Sample social media posts
+posts <- data.frame(
+  id = 1:5,
+  text = c("Love this new policy, really helpful!",
+          "Terrible service, very disappointed",
+          "Not sure about these changes",
+          "Best experience ever, highly recommend",
+          "Could be better but acceptable"),
+  stringsAsFactors = FALSE
+)
+
+# Basic sentiment scoring
+sentiment_scores <- posts %>%
+  unnest_tokens(word, text) %>%
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  count(id, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+print(sentiment_scores)
+```
+
+**Bottom line:** Automated text analysis
+
+---
+
+## Web Scraping
+
+```{r web_scraping, echo=FALSE}
+cat("Web Scraping for Surveys:
+
+APPLICATIONS:
+1. Price monitoring
+2. Job market analysis  
+3. Housing markets
+4. Product availability
+5. News sentiment
+
+EXAMPLE CODE:
+library(rvest)
+url <- 'https://example.com/prices'
+page <- read_html(url)
+prices <- page %>%
+  html_nodes('.price') %>%
+  html_text() %>%
+  parse_number()
+
+ETHICS:
+- Respect robots.txt
+- Rate limiting
+- Terms of service
+- Attribution")
+```
+
+**Bottom line:** Automated data collection
+
+---
+
+## Scanner Data
+
+```{r scanner_data, echo=FALSE, fig.height=5}
+# Volume and coverage of scanner data
+scanner_stats <- data.frame(
+  Country = c("USA", "UK", "Germany", "Japan", "South Africa"),
+  Coverage = c(90, 85, 80, 95, 60),
+  Items = c(500000, 400000, 450000, 600000, 200000),
+  Frequency = c("Weekly", "Weekly", "Monthly", "Daily", "Monthly")
+)
+
+ggplot(scanner_stats, aes(x = Coverage, y = Items/1000)) +
+  geom_point(size = 4, color = "purple") +
+  geom_text(aes(label = Country), vjust = -1) +
+  labs(x = "Market Coverage (%)", 
+       y = "Number of Items (1000s)",
+       title = "Scanner Data Coverage") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Detailed consumption data
+
+---
+
+## Data Linkage Methods
+
+```{r linkage_methods, echo=FALSE}
+linkage <- data.frame(
+  Method = c("Exact matching", "Probabilistic", "Statistical matching", 
+            "Machine learning"),
+  Accuracy = c("100%", "85-95%", "70-85%", "90-98%"),
+  Requirements = c("Common ID", "Multiple variables", "Similar distributions",
+                  "Training data"),
+  Computation = c("Fast", "Medium", "Slow", "Variable")
+)
+
+kable(linkage) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Multiple linkage options
+
+---
+
+## Record Linkage Example
+
+```{r record_linkage, echo=TRUE}
+# Probabilistic record linkage
+library(RecordLinkage)
+library(stringdist) # <-- Add this line to load the correct package
+
+# Create two datasets with some common records
+data1 <- data.frame(
+  name = c("John Smith", "Jane Doe", "Bob Johnson"),
+  age = c(35, 28, 42),
+  city = c("NYC", "LA", "Chicago")
+)
+
+data2 <- data.frame(
+  name = c("Jon Smith", "Jane Doe", "Robert Johnson", "Mary White"),
+  age = c(35, 29, 42, 31),
+  city = c("New York", "LA", "Chicago", "Boston")
+)
+
+# Calculate string similarities
+# This will now work correctly
+name_sim <- stringsim(data1$name, data2$name, method = "jw")
+print(round(name_sim, 2))
+```
+
+**Bottom line:** Fuzzy matching possible
+
+---
+
+
+
+## Privacy-Preserving Linkage
+
+```{r privacy_linkage, echo=FALSE}
+cat("Privacy-Preserving Record Linkage:
+
+TECHNIQUES:
+1. Hashing
+   - One-way encryption
+   - Same input → same hash
+   - Cannot reverse
+
+2. Bloom filters
+   - Probabilistic data structure
+   - Allows fuzzy matching
+   - Privacy preserved
+
+3. Secure multi-party computation
+   - Compute on encrypted data
+   - No party sees raw data
+   - Results only shared
+
+4. Differential privacy
+   - Add calibrated noise
+   - Individual privacy guaranteed
+   - Aggregate statistics preserved")
+```
+
+**Bottom line:** Link without sharing
+
+---
+
+## Combining Data Sources
+
+```{r combining_sources, echo=FALSE, fig.height=5}
+# Load the necessary packages
+library(tidyverse)
+
+# Framework for combining sources
+framework <- data.frame(
+  Stage = c("Survey", "Admin", "Big Data", "Combined"),
+  Strengths = c(5, 4, 3, 5),
+  Coverage = c(4, 5, 3, 5),
+  Timeliness = c(2, 3, 5, 4),
+  Cost = c(1, 4, 4, 3)
+)
+
+# This code will now run correctly
+framework %>%
+  dplyr::select(-Stage) %>% # <-- Specify dplyr::select
+  mutate(Stage = c("Survey", "Admin", "Big Data", "Combined")) %>%
+  pivot_longer(-Stage, names_to = "Dimension", values_to = "Score") %>%
+  ggplot(aes(x = Dimension, y = Score, fill = Stage)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Score (1-5)", title = "Data Source Strengths") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Combination optimizes all dimensions
+
+---
+
+## Hybrid Estimation
+
+```{r hybrid_estimation, echo=FALSE}
+cat("Hybrid Estimation Framework:
+
+1. SURVEY CORE
+   - Probability sample
+   - Key variables measured
+   - Known selection process
+
+2. BIG DATA AUXILIARY
+   - Full coverage (potentially)
+   - Real-time updates
+   - Proxy variables
+
+3. CALIBRATION
+   - Weight adjustment
+   - Bias correction
+   - Variance reduction
+
+4. SMALL AREA ESTIMATION
+   - Borrow strength
+   - Model-based
+   - Improved precision")
+```
+
+**Bottom line:** Best of both worlds
+
+---
+
+## Quality Framework
+
+```{r quality_framework_big, echo=FALSE}
+quality_dims <- data.frame(
+  Dimension = c("Accuracy", "Timeliness", "Coherence", "Accessibility", 
+               "Relevance", "Interpretability"),
+  Surveys = c("High", "Medium", "High", "Medium", "High", "High"),
+  Big_Data = c("Variable", "High", "Low", "Low", "Medium", "Low"),
+  Combined = c("High", "High", "Medium", "Medium", "High", "Medium")
+)
+
+kable(quality_dims) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Quality multi-dimensional
+
+---
+
+## Nowcasting with Big Data
+
+```{r nowcasting, echo=TRUE}
+# Nowcasting example using Google Trends
+set.seed(2025)
+
+# Simulate Google Trends and official data
+dates <- seq(as.Date("2024-01-01"), as.Date("2024-12-31"), by = "month")
+official <- c(5.2, 5.1, 5.3, 5.5, 5.4, 5.6, 5.8, 5.7, 5.9, 6.1, NA, NA)
+google_trends <- c(45, 43, 48, 52, 50, 55, 58, 56, 60, 65, 68, 70)
+
+# Simple nowcast model
+model <- lm(official ~ google_trends, 
+           data = data.frame(official, google_trends)[1:10,])
+
+# Predict missing months
+predictions <- predict(model, 
+                      newdata = data.frame(google_trends = c(68, 70)))
+
+cat("Official (Oct):", official[10], "\n")
+cat("Nowcast (Nov):", round(predictions[1], 1), "\n")
+cat("Nowcast (Dec):", round(predictions[2], 1))
+```
+
+**Bottom line:** Real-time estimation
+
+---
+
+## Machine Learning Integration
+
+```{r ml_integration, echo=FALSE, fig.height=5}
+# ML pipeline for data integration
+ml_methods <- data.frame(
+  Task = c("Linkage", "Imputation", "Classification", "Prediction", "Anomaly"),
+  Algorithm = c("Random Forest", "XGBoost", "Neural Net", "LSTM", "Isolation Forest"),
+  Accuracy = c(92, 88, 95, 85, 90)
+)
+
+ggplot(ml_methods, aes(x = reorder(Task, Accuracy), y = Accuracy)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Algorithm), vjust = -0.5, size = 3) +
+  coord_flip() +
+  labs(x = "", y = "Accuracy (%)",
+       title = "ML Methods for Data Integration") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** ML enhances integration
+
+---
+
+## Validation Strategies
+
+```{r validation_strategies, echo=FALSE}
+validation <- data.frame(
+  Strategy = c("Gold standard comparison", "Cross-validation", 
+              "External benchmarks", "Sensitivity analysis", "Triangulation"),
+  Description = c("Compare to high-quality survey", "Hold-out testing",
+                 "Check against known totals", "Vary assumptions",
+                 "Multiple methods comparison"),
+  When_Used = c("Method development", "Model building", "Regular checks",
+               "Uncertainty assessment", "Final validation")
+)
+
+kable(validation) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Multiple validation needed
+
+---
+
+## Case Study: Poverty Mapping
+
+```{r poverty_mapping, echo=FALSE}
+cat("Combining Data for Poverty Maps:
+
+DATA SOURCES:
+1. Household survey (n=5,000)
+   - Detailed consumption
+   - Limited geography
+
+2. Census (N=20 million)
+   - Basic indicators
+   - Full coverage
+
+3. Satellite imagery
+   - Nightlights
+   - Building density
+   - Roads
+
+4. Mobile phone data
+   - Airtime purchases
+   - Movement patterns
+
+METHOD:
+- Train model on survey
+- Predict using census + big data
+- Validate with hold-out sample
+
+RESULT:
+- District-level poverty estimates
+- Standard errors < 5%
+- Maps updated quarterly")
+```
+
+**Bottom line:** Multi-source integration works
+
+---
+
+## Statistical Disclosure Control
+
+```{r disclosure_control, echo=FALSE}
+methods <- data.frame(
+  Method = c("Suppression", "Aggregation", "Perturbation", 
+            "Synthetic data", "Differential privacy"),
+  Risk_Reduction = c("High", "High", "Medium", "High", "Maximum"),
+  Utility_Loss = c("High", "Medium", "Low", "Low", "Medium"),
+  Implementation = c("Easy", "Easy", "Medium", "Hard", "Hard")
+)
+
+kable(methods) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Balance risk and utility
+
+---
+
+## Synthetic Data Generation
+
+```{r synthetic_data, echo=TRUE}
+# Generate synthetic data preserving relationships
+library(synthpop)
+
+# Original data
+original <- data.frame(
+  age = sample(20:70, 1000, replace = TRUE),
+  income = rlnorm(1000, 10, 0.5),
+  education = sample(1:5, 1000, replace = TRUE)
+)
+
+# Generate synthetic version
+syn_data <- syn(original, method = "cart", seed = 2025)
+
+# Compare distributions
+cat("Original mean age:", round(mean(original$age), 1), "\n")
+cat("Synthetic mean age:", round(mean(syn_data$syn$age), 1), "\n")
+cat("Correlation preserved:", 
+    round(cor(syn_data$syn$age, log(syn_data$syn$income)), 2))
+```
+
+**Bottom line:** Privacy with utility
+
+---
+
+## Real-time Monitoring Systems
+
+```{r realtime_systems, echo=FALSE, fig.height=5}
+# Dashboard components
+components <- data.frame(
+  Component = c("Data ingestion", "Processing", "Storage", 
+               "Analytics", "Visualization"),
+  Technology = c("Kafka", "Spark", "Hadoop", "Python/R", "Tableau"),
+  Latency = c(1, 5, 10, 15, 2),
+  Cost = c(2, 4, 3, 2, 3)
+)
+
+components %>%
+  pivot_longer(c(Latency, Cost), names_to = "Metric", values_to = "Value") %>%
+  ggplot(aes(x = Component, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set3") +
+  labs(y = "Relative Scale",
+       title = "Real-time System Components") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 11))
+```
+
+**Bottom line:** Complex infrastructure needed
+
+---
+
+## API Economy
+
+```{r api_economy, echo=FALSE}
+cat("Data APIs for Surveys:
+
+COMMON APIs:
+- Google Trends
+- Twitter/X API
+- Weather data
+- Economic indicators
+- Geographic data
+
+EXAMPLE USAGE:
+library(httr)
+library(jsonlite)
+
+# Get weather data
+response <- GET(
+  'https://api.weather.com/v1/location',
+  query = list(
+    lat = -26.2041,
+    lon = 28.0473,
+    apikey = 'your_key'
+  )
+)
+
+weather_data <- fromJSON(content(response, 'text'))
+
+BENEFITS:
+- Real-time data
+- Standardized format
+- Automated updates
+- Cost-effective")
+```
+
+**Bottom line:** Automated data enrichment
+
+---
+
+## Cloud Infrastructure
+
+```{r cloud_infrastructure, echo=FALSE}
+cloud_comparison <- data.frame(
+  Provider = c("AWS", "Google Cloud", "Azure", "IBM"),
+  Strengths = c("Market leader", "ML/AI tools", "Enterprise", "Watson AI"),
+  Cost_TB_Month = c(23, 20, 25, 22),
+  Free_Tier = c("12 months", "Always free", "12 months", "Lite plan")
+)
+
+kable(cloud_comparison) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Scalable computing essential
+
+---
+
+## Edge Computing
+
+```{r edge_computing, echo=FALSE}
+cat("Edge Computing for Surveys:
+
+CONCEPT:
+Process data near source rather than cloud
+
+APPLICATIONS:
+1. Offline survey apps
+   - Process on device
+   - Sync when connected
+   
+2. IoT sensors
+   - Local aggregation
+   - Reduced bandwidth
+   
+3. Real-time validation
+   - Instant feedback
+   - Quality checks
+
+4. Privacy preservation
+   - Data stays local
+   - Only aggregates sent
+
+BENEFITS:
+- Reduced latency
+- Lower bandwidth costs
+- Privacy protection
+- Resilience")
+```
+
+**Bottom line:** Computing at the edge
+
+---
+
+## Federated Learning
+
+```{r federated_learning, echo=FALSE, fig.height=5}
+# Federated learning concept
+steps <- data.frame(
+  Step = 1:5,
+  Process = c("Local training", "Model updates", "Aggregation", 
+             "Global model", "Distribution"),
+  Location = c("Device", "Encrypted", "Server", "Server", "Devices"),
+  Data_Shared = c("None", "Gradients", "Parameters", "Model", "Model")
+)
+
+ggplot(steps, aes(x = Step, y = 1, label = Process)) +
+  geom_point(size = 10, color = "darkblue") +
+  geom_text(vjust = -2) +
+  ylim(0.5, 1.5) +
+  theme_void() +
+  labs(title = "Federated Learning Process") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14))
+```
+
+**Bottom line:** Learn without centralizing
+
+---
+
+## Blockchain for Data Integrity
+
+```{r blockchain_integrity, echo=TRUE}
+# Simple blockchain concept
+library(digest)
+
+# Create blocks
+create_block <- function(index, timestamp, data, previous_hash) {
+  block <- list(
+    index = index,
+    timestamp = timestamp,
+    data = data,
+    previous_hash = previous_hash
+  )
+  block$hash <- digest(block, algo = "sha256")
+  return(block)
+}
+
+# Genesis block
+block1 <- create_block(1, Sys.time(), "Survey Wave 1", "0")
+
+# Next block
+block2 <- create_block(2, Sys.time(), "Survey Wave 2", block1$hash)
+
+cat("Block 1 hash:", substr(block1$hash, 1, 10), "...\n")
+cat("Block 2 prev:", substr(block2$previous_hash, 1, 10), "...")
+```
+
+**Bottom line:** Immutable audit trail
+
+---
+
+## Exercise: Design Integration
+
+### Your task (5 minutes):
+
+Design a data integration strategy:
+1. Choose primary survey topic
+2. Identify big data sources
+3. Plan linkage method
+4. Address quality issues
+5. Specify validation approach
+
+**Bottom line:** Apply integration concepts
+
+---
+
+## Cost-Benefit Analysis
+
+```{r cost_benefit_integration, echo=FALSE, fig.height=5}
+# ROI of data integration
+scenarios <- data.frame(
+  Approach = c("Survey only", "Big data only", "Basic integration", 
+              "Advanced integration"),
+  Cost = c(100, 30, 120, 150),
+  Quality = c(90, 60, 85, 95),
+  Timeliness = c(30, 90, 70, 85)
+)
+
+scenarios %>%
+  pivot_longer(c(Quality, Timeliness), names_to = "Metric", values_to = "Score") %>%
+  ggplot(aes(x = Cost, y = Score, color = Metric)) +
+  geom_point(size = 4) +
+  geom_text(aes(label = Approach), vjust = -1, size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Cost (Index)", y = "Performance Score",
+       title = "Cost-Benefit of Integration Approaches") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Advanced integration worth cost
+
+---
+
+## Legal and Regulatory
+
+```{r legal_regulatory, echo=FALSE}
+regulations <- data.frame(
+  Region = c("EU", "USA", "China", "Africa"),
+  Law = c("GDPR", "Various state", "PIPL", "Varies"),
+  Key_Requirement = c("Consent, purpose", "Sector-specific", 
+                     "Data localization", "Emerging"),
+  Penalty = c("4% revenue", "Varies", "5% revenue", "Varies")
+)
+
+kable(regulations) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Complex compliance landscape
+
+---
+
+## Future Directions
+
+```{r future_directions_integration, echo=FALSE}
+future <- data.frame(
+  Trend = c("Automated integration", "Real-time fusion", 
+           "Privacy-preserving analytics", "Decentralized data"),
+  Timeline = c("2-3 years", "3-5 years", "Now-2 years", "5+ years"),
+  Impact = c("Efficiency", "Timeliness", "Trust", "Control"),
+  Readiness = c("Pilots", "Research", "Deployment", "Concept")
+)
+
+kable(future) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Rapid evolution ahead
+
+---
+
+## Part 3 Summary
+
+### You've learned:
+
+✅ Big data sources and characteristics  
+✅ Data linkage methods  
+✅ Integration frameworks  
+✅ Quality and validation  
+✅ Privacy-preserving techniques  
+
+**Bottom line:** Integration skills acquired
+
+---
+
+## Key Messages
+
+```{r key_messages_part3, echo=FALSE}
+messages <- data.frame(
+  Number = 1:5,
+  Message = c("Big data complements but doesn't replace surveys",
+             "Quality assessment is critical",
+             "Privacy must be built in",
+             "Validation is essential",
+             "Skills and infrastructure needed")
+)
+
+kable(messages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Thoughtful integration required
+
+---
+
+## Break Time!
+
+## ☕ 15-Minute Break
+
+### When we return:
+- Future of surveys
+- Career development
+- Implementation planning
+
+### Reflect on:
+Which big data source excites you most?
+
+**Bottom line:** Process and rest
+
+---
+
+class: center, middle, inverse
+
+# End of Part 3
+
+## Slides 151-225 Complete
+
+### Next: Part 4 - Future of Surveys
+
+---
+---
+
+## Welcome to Part 4!
+
+### Future of Surveys and Career Development
+
+Topics for next 75 slides:
+- Future trends and predictions
+- Methodological innovations
+- Career pathways
+- Skills development
+- Implementation strategies
+
+**Bottom line:** Preparing for the future
+
+---
+
+## Survey Evolution Timeline
+
+```{r survey_evolution, echo=FALSE, fig.height=5}
+evolution <- data.frame(
+  Era = c("Paper", "Telephone", "Web", "Mobile", "AI-Integrated", "Quantum"),
+  Start_Year = c(1900, 1970, 1995, 2010, 2020, 2030),
+  End_Year = c(2000, 2010, 2020, 2030, 2040, 2050),
+  Dominant = c(TRUE, TRUE, TRUE, TRUE, FALSE, FALSE)
+)
+
+ggplot(evolution, aes(x = Start_Year, xend = End_Year, 
+                     y = Era, yend = Era, color = Dominant)) +
+  geom_segment(size = 4) +
+  scale_color_manual(values = c("gray", "darkblue")) +
+  labs(x = "Year", y = "", title = "Survey Method Evolution") +
+  theme(text = element_text(size = 14),
+        legend.position = "none")
+```
+
+**Bottom line:** Continuous evolution
+
+---
+
+## Trends Shaping the Future
+
+```{r future_trends, echo=FALSE}
+trends <- data.frame(
+  Trend = c("Declining response rates", "Data privacy concerns", 
+           "Real-time expectations", "Cost pressures", 
+           "Digital divide", "AI advancement"),
+  Impact = c("High", "High", "Medium", "High", "Medium", "High"),
+  Response = c("Adaptive design", "Privacy tech", "Automation",
+              "Efficiency", "Hybrid methods", "Integration")
+)
+
+kable(trends) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Multiple forces at work
+
+---
+
+## Response Rate Crisis
+
+```{r response_crisis, echo=FALSE, fig.height=5}
+# Historical and projected response rates
+years <- c(1990, 2000, 2010, 2020, 2030, 2040)
+phone <- c(70, 60, 45, 25, 15, 10)
+web <- c(NA, 50, 40, 30, 25, 20)
+ai_assisted <- c(NA, NA, NA, 35, 45, 50)
+
+data.frame(
+  Year = rep(years, 3),
+  Rate = c(phone, web, ai_assisted),
+  Method = rep(c("Phone", "Web", "AI-Assisted"), each = 6)
+) %>%
+  filter(!is.na(Rate)) %>%
+  ggplot(aes(x = Year, y = Rate, color = Method)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(y = "Response Rate (%)",
+       title = "Response Rate Trends and Projections") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** New methods needed
+
+---
+
+## Non-Probability Future
+
+```{r nonprob_future, echo=FALSE}
+cat("Non-Probability Sample Framework:
+
+CURRENT CHALLENGES:
+- Selection bias
+- Coverage issues
+- Unknown inclusion probabilities
+- Limited inference
+
+FUTURE SOLUTIONS:
+1. Quasi-randomization
+   - Random recruitment within platforms
+   - Multi-source integration
+   
+2. Advanced weighting
+   - Machine learning calibration
+   - Synthetic populations
+   
+3. Quality metrics
+   - Bias indicators
+   - Representativeness scores
+   
+4. Transparency
+   - Full methodology disclosure
+   - Uncertainty quantification")
+```
+
+**Bottom line:** Evolution not revolution
+
+---
+
+## AI-Powered Surveys
+
+```{r ai_surveys, echo=FALSE}
+ai_capabilities <- data.frame(
+  Capability = c("Questionnaire design", "Sample optimization",
+                "Adaptive questioning", "Real-time translation",
+                "Fraud detection", "Automated analysis"),
+  Current = c("Experimental", "Operational", "Pilot", 
+             "Operational", "Operational", "Partial"),
+  Future_5yr = c("Standard", "Advanced", "Standard",
+                "Universal", "Advanced", "Standard")
+)
+
+kable(ai_capabilities) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** AI transforms every aspect
+
+---
+
+## Conversational AI Example
+
+```{r conversational_ai, echo=TRUE}
+# Simulated adaptive AI interviewer
+library(tidyverse)
+
+# Response analysis function
+analyze_response <- function(response) {
+  sentiment <- case_when(
+    grepl("good|great|excellent", tolower(response)) ~ "positive",
+    grepl("bad|poor|terrible", tolower(response)) ~ "negative",
+    TRUE ~ "neutral"
+  )
+  
+  length <- nchar(response)
+  
+  return(list(sentiment = sentiment, length = length))
+}
+
+# Adaptive next question
+get_next_question <- function(analysis) {
+  if(analysis$sentiment == "negative") {
+    return("Can you tell me more about what went wrong?")
+  } else if(analysis$length < 20) {
+    return("Could you elaborate on that?")
+  } else {
+    return("Thank you. Moving to the next topic...")
+  }
+}
+
+# Example
+response <- "The service was terrible and slow"
+analysis <- analyze_response(response)
+next_q <- get_next_question(analysis)
+cat("Next question:", next_q)
+```
+
+**Bottom line:** Adaptive interaction
+
+---
+
+## Quantum Computing Impact
+
+```{r quantum_impact, echo=FALSE, fig.height=5}
+# Quantum computing timeline
+applications <- data.frame(
+  Application = c("Encryption", "Optimization", "Simulation", 
+                 "ML Training", "Sampling"),
+  Classical_Time = c(1000000, 10000, 100000, 1000, 100),
+  Quantum_Time = c(1, 10, 100, 10, 1),
+  Available = c(2025, 2027, 2030, 2028, 2035)
+)
+
+applications %>%
+  pivot_longer(c(Classical_Time, Quantum_Time), 
+               names_to = "Type", values_to = "Time") %>%
+  ggplot(aes(x = Application, y = log10(Time), fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("gray", "purple")) +
+  labs(y = "Log10(Computation Time)",
+       title = "Quantum Speedup Potential") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Exponential speedup
+
+---
+
+## Continuous Measurement
+
+```{r continuous_measurement, echo=FALSE}
+cat("From Periodic to Continuous:
+
+TRADITIONAL:
+- Annual surveys
+- Point-in-time estimates
+- Retrospective questions
+- Static populations
+
+CONTINUOUS:
+- Always-on data collection
+- Rolling samples
+- Real-time measurement
+- Dynamic populations
+
+IMPLEMENTATION:
+1. Rotating panels
+2. Sensor integration
+3. Passive measurement
+4. Automated triggers
+
+BENEFITS:
+- Trend detection
+- Reduced recall bias
+- Timely insights
+- Lower burden")
+```
+
+**Bottom line:** Always-on future
+
+---
+
+## Digital Twins
+
+```{r digital_twins, echo=FALSE}
+digital_twin <- data.frame(
+  Component = c("Individual model", "Behavioral patterns", 
+               "Environmental context", "Social networks", "Predictions"),
+  Data_Source = c("Survey + admin", "Mobile + sensors", 
+                 "GIS + IoT", "Social media", "ML models"),
+  Update = c("Quarterly", "Daily", "Real-time", "Weekly", "Continuous")
+)
+
+kable(digital_twin) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Virtual population models
+
+---
+
+## Synthetic Populations
+
+```{r synthetic_populations, echo=TRUE}
+# Generate synthetic population
+set.seed(2025)
+
+# Base population characteristics
+generate_synthetic_pop <- function(n = 1000) {
+  # Correlated characteristics
+  age <- sample(18:80, n, replace = TRUE)
+  education <- pmin(20, 5 + rpois(n, age/10))
+  income <- exp(8 + 0.05*age + 0.1*education + rnorm(n, 0, 0.5))
+  
+  pop <- data.frame(
+    id = 1:n,
+    age = age,
+    education = education,
+    income = income,
+    employed = rbinom(n, 1, plogis(-2 + 0.05*age - 0.001*age^2))
+  )
+  
+  return(pop)
+}
+
+synth_pop <- generate_synthetic_pop(1000)
+summary(synth_pop[, -1])
+```
+
+**Bottom line:** Testing without real data
+
+---
+
+## Metaverse Surveys
+
+```{r metaverse_surveys, echo=FALSE, fig.height=5}
+# Metaverse adoption projection
+years <- 2020:2035
+adoption <- plogis((years - 2027)/3) * 100
+
+data.frame(Year = years, Adoption = adoption) %>%
+  ggplot(aes(x = Year, y = Adoption)) +
+  geom_line(size = 2, color = "purple") +
+  geom_ribbon(aes(ymin = 0, ymax = Adoption), alpha = 0.3, fill = "purple") +
+  labs(y = "Adoption Rate (%)",
+       title = "Projected Metaverse Survey Adoption") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Virtual worlds for research
+
+---
+
+## Career Paths in Survey Research
+
+```{r career_paths, echo=FALSE}
+paths <- data.frame(
+  Level = c("Entry", "Mid", "Senior", "Executive"),
+  Technical = c("Survey programmer", "Statistician", 
+               "Lead methodologist", "Chief data scientist"),
+  Management = c("Field coordinator", "Project manager",
+                "Research director", "VP Research"),
+  Years = c("0-3", "3-7", "7-15", "15+"),
+  Salary_Range = c("$40-60k", "$60-90k", "$90-130k", "$130k+")
+)
+
+kable(paths) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Multiple pathways available
+
+---
+
+## Essential Skills Matrix
+
+```{r skills_matrix, echo=FALSE}
+skills <- data.frame(
+  Skill = c("Statistical methods", "Programming", "Communication",
+           "Project management", "Domain knowledge"),
+  Junior = c("Basic", "R/Python basics", "Reports", "Task level", "Learning"),
+  Senior = c("Advanced", "Multiple languages", "Presentations", 
+            "Multi-project", "Expert"),
+  Future = c("AI/ML integration", "Cloud/distributed", "Storytelling",
+           "Agile/adaptive", "Interdisciplinary")
+)
+
+kable(skills) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Continuous skill development
+
+---
+
+## Programming Languages
+
+```{r programming_langs, echo=FALSE, fig.height=5}
+# Language popularity in survey research
+languages <- data.frame(
+  Language = c("R", "Python", "SAS", "Stata", "SQL", "Julia"),
+  Current_Use = c(40, 35, 20, 15, 45, 5),
+  Growth = c(10, 25, -5, -2, 15, 8)
+)
+
+ggplot(languages, aes(x = Current_Use, y = Growth)) +
+  geom_point(size = 5, aes(color = Language)) +
+  geom_text(aes(label = Language), vjust = -1) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Current Usage (%)", y = "Growth Rate (%/year)",
+       title = "Programming Language Trends") +
+  theme(legend.position = "none",
+        text = element_text(size = 12))
+```
+
+**Bottom line:** R and Python dominate
+
+---
+
+## Learning Resources
+
+```{r learning_resources, echo=FALSE}
+resources <- data.frame(
+  Type = c("Online courses", "Books", "Conferences", 
+          "Communities", "Journals"),
+  Examples = c("Coursera, edX", "Groves, Lohr", "AAPOR, JSM",
+              "Stack Overflow", "JOS, Survey Methodology"),
+  Cost = c("$-$$", "$$", "$$$", "Free", "$$-$$$"),
+  Format = c("Self-paced", "Reference", "Networking", "Q&A", "Research")
+)
+
+kable(resources) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Many learning options
+
+---
+
+## Building Your Portfolio
+
+```{r portfolio_building, echo=FALSE}
+cat("Survey Research Portfolio:
+
+1. GITHUB REPOSITORY
+   - Sample designs
+   - Analysis code
+   - Visualization examples
+   - Documentation
+
+2. CASE STUDIES
+   - Problem definition
+   - Methodology
+   - Results
+   - Lessons learned
+
+3. PUBLICATIONS
+   - Blog posts
+   - White papers
+   - Peer-reviewed articles
+   - Conference presentations
+
+4. CERTIFICATIONS
+   - Statistical software
+   - Survey platforms
+   - Cloud computing
+   - Machine learning")
+```
+
+**Bottom line:** Demonstrate expertise
+
+---
+
+## Professional Networks
+
+```{r professional_networks, echo=FALSE}
+networks <- data.frame(
+  Organization = c("AAPOR", "ISI", "RSS", "ASA", "IASS"),
+  Focus = c("Public opinion", "International stats", 
+           "UK statistics", "American stats", "Survey sampling"),
+  Membership = c("$200-400", "$50-150", "£150-250", "$180-500", "$50-100"),
+  Benefits = c("Conferences, training", "Global network", 
+              "CPD, journals", "Sections, JSM", "Courses, network")
+)
+
+kable(networks) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Join professional communities
+
+---
+
+## Innovation Framework
+
+```{r innovation_framework, echo=FALSE, fig.height=5}
+# Innovation adoption curve
+x <- seq(-3, 3, 0.1)
+y <- dnorm(x)
+adopters <- c("Innovators", "Early\nAdopters", "Early\nMajority", 
+             "Late\nMajority", "Laggards")
+x_pos <- c(-2, -0.5, 0.5, 1.5, 2.5)
+
+data.frame(x = x, y = y) %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_line(size = 2, color = "darkblue") +
+  geom_area(alpha = 0.3, fill = "lightblue") +
+  geom_vline(xintercept = c(-1.5, 0, 1, 2), linetype = "dashed") +
+  annotate("text", x = x_pos, y = 0.05, label = adopters, size = 3) +
+  theme_minimal() +
+  labs(title = "Innovation Adoption in Surveys",
+       x = "", y = "") +
+  theme(axis.text = element_blank(),
+        text = element_text(size = 12))
+```
+
+**Bottom line:** Know your position
+
+---
+
+## Change Management
+
+```{r change_management, echo=FALSE}
+change_process <- data.frame(
+  Stage = c("Awareness", "Desire", "Knowledge", "Ability", "Reinforcement"),
+  Activities = c("Communication", "Build buy-in", "Training", 
+                "Practice", "Celebration"),
+  Timeline = c("Month 1", "Months 1-2", "Months 2-3", 
+              "Months 3-6", "Ongoing"),
+  Success_Factor = c("Clear vision", "Benefits clear", "Resources", 
+                    "Support", "Recognition")
+)
+
+kable(change_process) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Structured change process
+
+---
+
+## Regional Development
+
+```{r regional_development, echo=FALSE}
+cat("SADC Survey Capacity Building:
+
+CURRENT STATE:
+- Varied capacity levels
+- Limited resources
+- Traditional methods dominant
+- Growing demand for data
+
+DEVELOPMENT PLAN:
+1. Regional training hub
+2. Shared infrastructure
+3. Method harmonization
+4. Peer learning network
+5. Joint innovation projects
+
+TIMELINE:
+Year 1: Assessment and planning
+Year 2: Pilot programs
+Year 3: Scale successful initiatives
+Year 4: Regional integration
+Year 5: Sustainable operations")
+```
+
+**Bottom line:** Regional collaboration key
+
+---
+
+## Sustainable Surveys
+
+```{r sustainable_surveys, echo=FALSE}
+sustainability <- data.frame(
+  Dimension = c("Environmental", "Economic", "Social", "Technical"),
+  Current = c("High travel", "High cost", "Burden", "Complex"),
+  Future = c("Remote/digital", "Efficient", "Engaging", "Automated"),
+  Actions = c("Reduce F2F", "Optimize design", "Gamification", "AI tools")
+)
+
+kable(sustainability) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Sustainability matters
+
+---
+
+## Ethics Evolution
+
+```{r ethics_evolution, echo=FALSE, fig.height=5}
+# Ethical considerations over time
+ethics_areas <- data.frame(
+  Area = rep(c("Consent", "Privacy", "Transparency", "Fairness", "Accountability"), 5),
+  Year = rep(c(2000, 2010, 2020, 2030, 2040), each = 5),
+  Importance = c(
+    3, 3, 2, 2, 2,  # 2000
+    4, 4, 3, 3, 3,  # 2010
+    5, 5, 4, 4, 4,  # 2020
+    5, 5, 5, 5, 5,  # 2030
+    5, 5, 5, 5, 5   # 2040
+  )
+)
+
+ggplot(ethics_areas, aes(x = Year, y = Importance, color = Area)) +
+  geom_line(size = 1.5) +
+  scale_color_brewer(palette = "Set2") +
+  labs(y = "Importance (1-5)",
+       title = "Evolution of Ethical Priorities") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Ethics increasingly central
+
+---
+
+## Implementation Roadmap
+
+```{r implementation_roadmap_future, echo=FALSE}
+roadmap <- data.frame(
+  Quarter = c("Q1", "Q2", "Q3", "Q4"),
+  Focus = c("Assessment", "Pilot", "Scale", "Evaluate"),
+  Technical = c("Tool selection", "Testing", "Deployment", "Optimization"),
+  People = c("Training needs", "Initial training", "Full rollout", "Certification"),
+  Outcome = c("Baseline", "Proof of concept", "Operations", "Excellence")
+)
+
+kable(roadmap) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Systematic implementation
+
+---
+
+## Risk Management
+
+```{r risk_management, echo=FALSE}
+risks <- data.frame(
+  Risk = c("Technology failure", "Skills gap", "Resistance to change",
+          "Budget constraints", "Quality issues"),
+  Probability = c("Medium", "High", "High", "Medium", "Low"),
+  Impact = c("High", "High", "Medium", "High", "High"),
+  Mitigation = c("Backup systems", "Training program", "Change management",
+                "Phased approach", "Quality framework")
+)
+
+kable(risks) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Anticipate and mitigate
+
+---
+
+## Success Metrics
+
+```{r success_metrics, echo=FALSE, fig.height=5}
+# KPIs for modern surveys
+metrics <- data.frame(
+  Metric = c("Response rate", "Cost per complete", "Timeliness",
+            "Quality score", "Innovation index"),
+  Current = c(25, 100, 30, 75, 40),
+  Target = c(35, 75, 7, 90, 80)
+)
+
+metrics %>%
+  pivot_longer(c(Current, Target), names_to = "Type", values_to = "Value") %>%
+  ggplot(aes(x = Metric, y = Value, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("gray", "darkgreen")) +
+  labs(y = "Score",
+       title = "Key Performance Indicators") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 11))
+```
+
+**Bottom line:** Clear targets needed
+
+---
+
+## Your Action Plan
+
+### Template for success:
+
+```{r action_plan, echo=FALSE}
+cat("90-DAY ACTION PLAN:
+
+DAYS 1-30: FOUNDATION
+□ Complete online course
+□ Install software tools
+□ Join professional network
+□ Review current methods
+
+DAYS 31-60: APPLICATION
+□ Pilot new technique
+□ Analyze with new tools
+□ Document lessons
+□ Share with team
+
+DAYS 61-90: EXPANSION
+□ Scale successful pilots
+□ Train colleagues
+□ Present results
+□ Plan next phase
+
+SUCCESS CRITERIA:
+- One new method implemented
+- Team capacity increased
+- Measurable improvement
+- Documentation complete")
+```
+
+**Bottom line:** Start immediately
+
+---
+
+## Exercise: Future Vision
+
+### Your task (5 minutes):
+
+Create your vision:
+1. Where do you want to be in 5 years?
+2. What skills do you need?
+3. What changes must happen?
+4. First step to take?
+5. Success measure?
+
+Share with group!
+
+**Bottom line:** Vision drives action
+
+---
+
+## Global Best Practices
+
+```{r global_practices, echo=FALSE}
+practices <- data.frame(
+  Country = c("Finland", "Canada", "South Korea", "Netherlands", "Australia"),
+  Innovation = c("Register-based", "Adaptive design", "Mobile-first",
+                "Sensor integration", "Linked data"),
+  Lesson = c("Admin data quality", "Responsive methods", "Digital adoption",
+            "Privacy by design", "Integration frameworks")
+)
+
+kable(practices) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Learn from leaders
+
+---
+
+## Research Priorities
+
+```{r research_priorities, echo=FALSE}
+priorities <- data.frame(
+  Area = c("Non-response", "Data integration", "AI methods",
+          "Privacy tech", "Real-time estimation"),
+  Funding = c("High", "High", "Medium", "Medium", "Low"),
+  Impact = c("High", "High", "High", "High", "Medium"),
+  Timeframe = c("Immediate", "2-3 years", "3-5 years", 
+                "Immediate", "5+ years")
+)
+
+kable(priorities) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Focus on high-impact areas
+
+---
+
+## Collaboration Opportunities
+
+```{r collaboration, echo=FALSE}
+cat("Collaboration Framework:
+
+INTERNAL:
+- Cross-department projects
+- Knowledge sharing sessions
+- Joint training programs
+- Innovation labs
+
+NATIONAL:
+- Government partnerships
+- Academic collaboration
+- Private sector engagement
+- NGO coordination
+
+INTERNATIONAL:
+- Regional networks (SADC)
+- Global initiatives (UN)
+- Research partnerships
+- Method harmonization
+
+VIRTUAL:
+- Online communities
+- Code sharing (GitHub)
+- Webinar series
+- Virtual conferences")
+```
+
+**Bottom line:** Collaborate to accelerate
+
+---
+
+## Part 4 Summary
+
+### You've learned:
+
+✅ Future trends and technologies  
+✅ Career development paths  
+✅ Essential skills and tools  
+✅ Implementation strategies  
+✅ Innovation frameworks  
+
+**Bottom line:** Future-ready skills
+
+---
+
+## Key Messages
+
+```{r key_messages_part4, echo=FALSE}
+messages <- data.frame(
+  Number = 1:5,
+  Message = c("The future is hybrid: traditional + digital + AI",
+             "Continuous learning is essential",
+             "Ethics and privacy are paramount",
+             "Collaboration accelerates innovation",
+             "Start small, scale what works")
+)
+
+kable(messages) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Embrace change thoughtfully
+
+---
+
+## Final Break!
+
+## ☕ 10-Minute Break
+
+### When we return:
+- Course synthesis
+- Country presentations
+- Certificates
+- Closing ceremony
+
+### Prepare:
+Your key takeaway to share
+
+**Bottom line:** Final session ahead
+
+---
+
+class: center, middle, inverse
+
+# End of Part 4
+
+## Slides 226-300 Complete
+
+### Next: Part 5 - Synthesis and Certification
+
+---
+
+---
+
+## Welcome to the Final Session!
+
+### Part 5: Synthesis and Certification
+
+Final session agenda:
+- Course synthesis
+- Key learnings review
+- Country presentations
+- Action commitments
+- Certification ceremony
+
+**Bottom line:** Bringing it all together
+
+---
+
+## The Journey We've Taken
+
+```{r journey_complete, echo=FALSE, fig.height=5}
+journey <- data.frame(
+  Day = 1:5,
+  Topic = c("Foundations", "Stratification", "Clustering", 
+           "Complex Designs", "Special Topics"),
+  Skills = c(20, 40, 60, 80, 100),
+  Confidence = c(30, 50, 65, 85, 95)
+)
+
+journey %>%
+  pivot_longer(c(Skills, Confidence), names_to = "Measure", values_to = "Level") %>%
+  ggplot(aes(x = Day, y = Level, color = Measure)) +
+  geom_line(size = 2) +
+  geom_point(size = 4) +
+  scale_color_brewer(palette = "Set1") +
+  labs(y = "Level (%)", title = "Your Learning Journey") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Significant growth achieved
+
+---
+
+## Core Concepts Mastered
+
+```{r core_concepts, echo=FALSE}
+concepts <- data.frame(
+  Area = c("Sampling Theory", "Design Methods", "Estimation", 
+          "Quality", "Technology"),
+  Day1 = c("Basic", "SRS", "Mean/Total", "Errors", "Introduction"),
+  Day5 = c("Advanced", "Complex multi-stage", "Model-based", 
+          "Total framework", "AI/Big Data"),
+  Growth = c("⬆️⬆️⬆️", "⬆️⬆️⬆️", "⬆️⬆️⬆️", "⬆️⬆️", "⬆️⬆️⬆️")
+)
+
+kable(concepts) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Comprehensive understanding
+
+---
+
+## Key Formulas Summary
+
+```{r formulas_summary, echo=FALSE}
+cat("Essential Formulas:
+
+SAMPLE SIZE:
+n = (z²pq)/(e²) × DEFF
+
+VARIANCE:
+V(ȳ) = (1-f)(s²/n)
+
+STRATIFIED:
+V(ȳst) = Σ(Wh²)(1-fh)(sh²/nh)
+
+CLUSTER:
+DEFF = 1 + (b-1)ρ
+
+WEIGHTS:
+wi = 1/πi
+
+CALIBRATION:
+w*i = wi × gi
+
+Where gi minimizes distance")
+```
+
+**Bottom line:** Mathematical foundation
+
+---
+
+## Software Skills Acquired
+
+```{r software_skills, echo=TRUE}
+# Your new R capabilities
+library(survey)
+
+# Create sample data for demonstration
+set.seed(2025)
+survey_data <- data.frame(
+  psu = rep(1:20, each = 50),
+  stratum = rep(1:4, each = 250),
+  weight = runif(1000, 50, 150),
+  variable = rnorm(1000, 100, 20),
+  outcome = rbinom(1000, 1, 0.3),
+  predictors = rnorm(1000)
+)
+
+# You can now:
+# 1. Define complex designs
+my_design <- svydesign(ids = ~psu, strata = ~stratum, 
+                       weights = ~weight, data = survey_data)
+
+# 2. Calculate estimates
+mean_est <- svymean(~variable, my_design)
+print(mean_est)
+
+# 3. Perform advanced analyses
+model <- svyglm(outcome ~ predictors, my_design, family = binomial())
+# summary(model)
+
+# 4. Handle missing data
+# library(mice)
+# imputed <- mice(data, m = 5)
+
+cat("\nSkills unlocked: ✅")
+```
+
+**Bottom line:** Practical capabilities
+
+---
+
+## Country Presentations
+
+### Share your plans (2 minutes each):
+
+1. **Current challenge** in your country
+2. **Method learned** to address it  
+3. **Implementation plan**
+4. **Expected impact**
+5. **Support needed**
+
+**Bottom line:** Learn from each other
+
+---
+
+## Presentation Time
+
+### Country 1: [Name]
+
+```{r country_template, echo=FALSE}
+cat("PRESENTATION TEMPLATE:
+
+CHALLENGE:
+_________________________________
+
+METHOD TO APPLY:
+_________________________________
+
+IMPLEMENTATION:
+When: ___________________________
+Who: ____________________________
+Resources: ______________________
+
+EXPECTED IMPACT:
+_________________________________
+
+SUPPORT NEEDED:
+_________________________________")
+```
+
+**Bottom line:** Concrete plans
+
+---
+
+## Common Challenges Identified
+
+```{r common_challenges_synthesis, echo=FALSE}
+challenges <- data.frame(
+  Challenge = c("Low response rates", "Limited resources", "Skills gaps",
+               "Old methodology", "Poor frames"),
+  Countries = c(12, 15, 10, 8, 11),
+  Priority = c("High", "High", "Medium", "Medium", "High")
+)
+
+kable(challenges) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Shared challenges
+
+---
+
+## Solutions Toolkit
+
+```{r solutions_toolkit, echo=FALSE}
+solutions <- data.frame(
+  Challenge = c("Low response", "Resources", "Skills", "Methods", "Frames"),
+  Week5_Solution = c("Responsive design", "Efficiency gains", 
+                    "Training program", "Modern methods", "Multiple frames"),
+  Long_Term = c("Multi-mode", "Partnerships", "Continuous learning",
+               "Innovation culture", "Admin data")
+)
+
+kable(solutions) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Solutions exist
+
+---
+
+## Regional Collaboration Plan
+
+```{r regional_plan, echo=FALSE, fig.height=5}
+# SADC collaboration network
+countries <- c("South Africa", "Botswana", "Zimbabwe", "Zambia", 
+              "Mozambique", "Namibia", "Others")
+connections <- matrix(c(
+  0, 1, 1, 1, 1, 1, 1,
+  1, 0, 1, 1, 0, 1, 1,
+  1, 1, 0, 1, 1, 0, 1,
+  1, 1, 1, 0, 1, 1, 1,
+  1, 0, 1, 1, 0, 1, 1,
+  1, 1, 0, 1, 1, 0, 1,
+  1, 1, 1, 1, 1, 1, 0
+), nrow = 7)
+
+# Simple network visualization
+plot(1:7, type = "n", xlim = c(0, 8), ylim = c(0, 8),
+     xlab = "", ylab = "", axes = FALSE,
+     main = "SADC Survey Collaboration Network")
+text(c(4, 2, 6, 1, 7, 3, 5), c(7, 5, 5, 2, 2, 2, 2), 
+     countries, cex = 0.8)
+```
+
+**Bottom line:** Stronger together
+
+---
+
+## Knowledge Sharing Platform
+
+```{r knowledge_platform, echo=FALSE}
+cat("SADC Survey Knowledge Hub:
+
+ONLINE PLATFORM:
+- Method library
+- Code repository  
+- Training materials
+- Discussion forum
+- Expert directory
+
+REGULAR ACTIVITIES:
+- Monthly webinars
+- Quarterly workshops
+- Annual conference
+- Peer reviews
+- Joint projects
+
+ACCESS:
+URL: www.sadc-surveys.org
+Login: Your email
+Initial password: SADC2025
+
+JOIN BY: February 1, 2025")
+```
+
+**Bottom line:** Stay connected
+
+---
+
+## Your Commitments
+
+### Write your commitment:
+
+```{r commitment_form, echo=FALSE}
+cat("MY COMMITMENT:
+
+I, _________________, commit to:
+
+1. IMMEDIATE (Next week):
+   _________________________________
+
+2. SHORT-TERM (Next month):
+   _________________________________
+
+3. MEDIUM-TERM (Next quarter):
+   _________________________________
+
+4. LONG-TERM (Next year):
+   _________________________________
+
+Signature: _________________ Date: _______")
+```
+
+**Bottom line:** Commitment drives change
+
+---
+
+## Support Network
+
+```{r support_network, echo=FALSE}
+support <- data.frame(
+  Resource = c("Course instructors", "Peer network", "Online community",
+              "Regional coordinator", "Technical helpdesk"),
+  Contact = c("instructors@workshop", "WhatsApp group", "forum@sadc",
+             "coordinator@sadc", "help@sadc"),
+  Response = c("48 hours", "Daily", "Daily", "Weekly", "24 hours")
+)
+
+kable(support) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Help available
+
+---
+
+## Success Stories
+
+```{r success_stories, echo=FALSE}
+cat("INSPIRATION FROM PAST PARTICIPANTS:
+
+2023 PARTICIPANT - KENYA:
+'Applied responsive design to DHS.
+Response rate increased from 72% to 81%.
+Cost reduced by 15%.'
+
+2022 PARTICIPANT - GHANA:
+'Implemented RDS for key populations.
+First reliable estimates obtained.
+Policy impact achieved.'
+
+2021 PARTICIPANT - TANZANIA:
+'Integrated admin data with surveys.
+Produced district estimates.
+Saved $500,000.'
+
+YOUR STORY IN 2026:
+_________________________________")
+```
+
+**Bottom line:** Success is possible
+
+---
+
+## Quality Framework Review
+
+```{r quality_review, echo=FALSE, fig.height=5}
+# Total Survey Error components
+tse <- data.frame(
+  Component = c("Coverage", "Sampling", "Nonresponse", 
+               "Measurement", "Processing"),
+  Control = c(85, 90, 70, 75, 95)
+)
+
+ggplot(tse, aes(x = Component, y = Control)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  geom_hline(yintercept = 80, linetype = "dashed", color = "red") +
+  labs(y = "Control Level (%)",
+       title = "Where to Focus Quality Efforts") +
+  theme(text = element_text(size = 12))
+```
+
+**Bottom line:** Focus on weak points
+
+---
+
+## Innovation Opportunities
+
+```{r innovation_opps, echo=FALSE}
+innovations <- data.frame(
+  Area = c("Data collection", "Processing", "Analysis", "Dissemination"),
+  Current = c("CAPI", "Manual", "Basic", "Static reports"),
+  Opportunity = c("AI-assisted", "Automated", "Machine learning", "Dashboards"),
+  Effort = c("Medium", "Low", "High", "Low"),
+  Impact = c("High", "Medium", "High", "High")
+)
+
+kable(innovations) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Quick wins available
+
+---
+
+## Cost Savings Potential
+
+```{r cost_savings, echo=TRUE}
+# Calculate potential savings
+current_cost <- 150  # per interview
+current_n <- 5000    # sample size
+
+# With new methods
+new_cost <- 100      # reduced cost
+efficiency_gain <- 0.8  # need 20% less sample
+new_n <- current_n * efficiency_gain
+
+# Savings
+current_total <- current_cost * current_n
+new_total <- new_cost * new_n
+savings <- current_total - new_total
+savings_pct <- (savings / current_total) * 100
+
+cat("Current cost: $", format(current_total, big.mark = ","), "\n")
+cat("New cost: $", format(new_total, big.mark = ","), "\n")
+cat("Savings: $", format(savings, big.mark = ","), 
+    " (", round(savings_pct), "%)", sep = "")
+```
+
+**Bottom line:** Significant savings possible
+
+---
+
+## Implementation Timeline
+
+```{r implementation_timeline_final, echo=FALSE}
+timeline <- data.frame(
+  Month = c("Feb", "Mar", "Apr", "May", "Jun", "Dec"),
+  Activity = c("Planning", "Training", "Pilot", "Evaluation", 
+              "Scale-up", "Full implementation"),
+  Milestone = c("Design ready", "Team trained", "Pilot complete",
+               "Results analyzed", "Rollout plan", "New system live")
+)
+
+kable(timeline) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** 12 months to transformation
+
+---
+
+## Personal Development Plan
+
+```{r personal_development, echo=FALSE}
+cat("YOUR 2025 LEARNING PLAN:
+
+TECHNICAL SKILLS:
+□ Advanced R programming (March)
+□ Machine learning basics (June)
+□ Big data tools (September)
+
+SOFT SKILLS:
+□ Project management (April)
+□ Communication (July)
+□ Leadership (October)
+
+CERTIFICATIONS:
+□ Survey methodology (Q2)
+□ Data science (Q3)
+□ Cloud computing (Q4)
+
+NETWORKING:
+□ Join AAPOR/ISI (February)
+□ Attend conference (August)
+□ Present paper (November)")
+```
+
+**Bottom line:** Continuous growth
+
+---
+
+## Measuring Your Impact
+
+```{r impact_metrics, echo=FALSE}
+metrics <- data.frame(
+  Metric = c("Methods improved", "Cost reduced", "Quality increased",
+            "Time saved", "Skills transferred"),
+  Target = c("3 new methods", "20%", "15% lower CV", 
+            "30% faster", "Train 10 people"),
+  Measure = c("Count", "Budget comparison", "CV calculation",
+             "Timeline tracking", "Training records")
+)
+
+kable(metrics) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Track your progress
+
+---
+
+## Stay Updated
+
+```{r stay_updated, echo=FALSE}
+cat("CONTINUING EDUCATION:
+
+NEWSLETTERS:
+- Survey Research Methods
+- AAPOR Quarterly
+- Statistical Journal
+
+PODCASTS:
+- Not So Standard Deviations
+- Data Skeptic
+- Survey Geeks
+
+BLOGS:
+- Andrew Gelman
+- Simply Statistics
+- R-bloggers
+
+COURSES:
+- Coursera: Survey Data Collection
+- edX: Data Analysis for Social Scientists
+- YouTube: StatQuest
+
+CONFERENCES 2025:
+- JSM (August, USA)
+- ISI (July, Netherlands)
+- SAPOR (September, SA)")
+```
+
+**Bottom line:** Never stop learning
+
+---
+
+## Recognition of Excellence
+
+### Top Performers:
+
+```{r recognition, echo=FALSE}
+cat("WORKSHOP AWARDS:
+
+🏆 BEST PROJECT DESIGN:
+   _______________________
+
+🏆 MOST INNOVATIVE APPROACH:
+   _______________________
+
+🏆 BEST COLLABORATION:
+   _______________________
+
+🏆 TECHNICAL EXCELLENCE:
+   _______________________
+
+🏆 FUTURE LEADER:
+   _______________________
+
+Congratulations to all!")
+```
+
+**Bottom line:** Excellence recognized
+
+---
+
+## Certificate Requirements
+
+```{r certificate_requirements, echo=FALSE}
+requirements <- data.frame(
+  Requirement = c("Attendance", "Exercises", "Presentation", 
+                 "Commitment", "Evaluation"),
+  Your_Status = c("✅ 100%", "✅ Completed", "✅ Delivered", 
+                 "✅ Signed", "✅ Submitted"),
+  Result = c("Pass", "Pass", "Pass", "Pass", "Pass")
+)
+
+kable(requirements) %>%
+  kable_styling(font_size = 11) %>%
+  row_spec(1:5, background = "lightgreen")
+```
+
+**Bottom line:** Requirements met!
+
+---
+
+## Your Certificate
+
+```{r certificate, echo=FALSE}
+cat("
+╔══════════════════════════════════════════════════════╗
+║                                                      ║
+║                 CERTIFICATE OF COMPLETION            ║
+║                                                      ║
+║                  This certifies that                 ║
+║                                                      ║
+║                  [PARTICIPANT NAME]                  ║
+║                                                      ║
+║          has successfully completed the              ║
+║                                                      ║
+║         SADC SURVEY SAMPLING WORKSHOP                ║
+║              Advanced Methods Track                  ║
+║                                                      ║
+║                 January 2025                         ║
+║                                                      ║
+║     ________________              ________________  ║
+║     Director, SADC Stats          Course Instructor  ║
+║                                                      ║
+╚══════════════════════════════════════════════════════╝")
+```
+
+**Bottom line:** Certified expertise!
+
+---
+
+## Group Photo
+
+### 📸 Time for group photo!
+
+Stand by country groups
+
+Hold your certificates
+
+Big smiles - you've earned it!
+
+**Bottom line:** Capture the moment
+
+---
+
+## Final Wisdom
+
+```{r final_wisdom, echo=FALSE}
+cat("REMEMBER:
+
+'In God we trust. 
+ All others must bring data.'
+ - W. Edwards Deming
+
+'The best time to plant a tree was 20 years ago.
+ The second best time is now.'
+ - Chinese Proverb
+
+'Statistical thinking will one day be as necessary
+ for efficient citizenship as the ability to read and write.'
+ - H.G. Wells
+
+You now have these skills.
+Use them wisely.
+Use them well.")
+```
+
+**Bottom line:** Go forth and survey!
+
+---
+
+## Thank You Messages
+
+```{r thank_you, echo=FALSE}
+cat("APPRECIATION:
+
+To ORGANIZERS:
+Thank you for making this possible
+
+To INSTRUCTORS:
+Thank you for sharing your knowledge
+
+To PARTICIPANTS:
+Thank you for your engagement
+
+To SUPPORT STAFF:
+Thank you for smooth operations
+
+To SPONSORS:
+Thank you for investing in capacity
+
+To YOU:
+Thank you for your commitment to excellence")
+```
+
+**Bottom line:** Gratitude to all
+
+---
+
+## Feedback Time
+
+### Please complete evaluation:
+
+1. Course content (1-5): _____
+2. Delivery methods (1-5): _____
+3. Practical relevance (1-5): _____
+4. Materials quality (1-5): _____
+5. Overall satisfaction (1-5): _____
+
+**Most valuable topic:** ________________
+
+**Suggested improvement:** ________________
+
+**Would you recommend?** Yes / No
+
+**Bottom line:** Your feedback improves future workshops
+
+---
+
+## Closing Remarks
+
+### From the instructors:
+
+You came seeking knowledge.
+You leave with capabilities.
+
+You came as individuals.
+You leave as a community.
+
+You came with questions.
+You leave with tools for answers.
+
+The journey doesn't end here.
+It begins now.
+
+**Bottom line:** This is your beginning
+
+---
+
+## Action Reminder
+
+### Before you leave:
+
+✅ Exchange contacts  
+✅ Join WhatsApp group  
+✅ Download materials  
+✅ Submit evaluation  
+✅ Collect certificate  
+✅ Take group photo  
+
+**Bottom line:** Don't forget!
+
+---
+
+## One Year From Now
+
+```{r one_year, echo=FALSE}
+cat("JANUARY 2026 REUNION:
+
+WHERE WILL YOU BE?
+
+□ New methods implemented
+□ Quality improved
+□ Costs reduced
+□ Team trained
+□ Recognition earned
+□ Problems solved
+□ Impact measured
+□ Career advanced
+
+SAVE THE DATE:
+Annual SADC Survey Conference
+January 15-17, 2026
+Johannesburg, South Africa
+
+Present your success story!")
+```
+
+**Bottom line:** See you next year
+
+---
+
+## The Network Continues
+
+```{r network_continues, echo=FALSE, fig.height=5}
+# Network growth projection
+years <- 2025:2030
+participants <- c(50, 100, 200, 400, 800, 1600)
+
+data.frame(Year = years, Participants = participants) %>%
+  ggplot(aes(x = Year, y = Participants)) +
+  geom_line(size = 2, color = "darkblue") +
+  geom_point(size = 4, color = "darkblue") +
+  scale_y_log10() +
+  labs(y = "Network Size (log scale)",
+       title = "SADC Survey Network Growth") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Growing community
+
+---
+
+## Final Challenge
+
+### Your mission:
+
+In the next 30 days:
+1. Apply ONE new method
+2. Share results with network
+3. Help ONE colleague
+4. Document lessons learned
+
+Report back by February 28, 2025
+
+**Bottom line:** Start immediately
+
+---
+
+## Farewell
+
+### Until we meet again:
+
+May your samples be representative,
+Your responses rates high,
+Your variances small,
+And your insights profound.
+
+Go forth and create knowledge!
+
+**Bottom line:** Farewell, not goodbye
+
+---
+
+## Contact Information
+
+```{r contacts, echo=FALSE}
+cat("STAY IN TOUCH:
+
+WORKSHOP TEAM:
+Email: workshop@sadc-surveys.org
+Phone: +27 11 XXX XXXX
+
+TECHNICAL SUPPORT:
+Email: support@sadc-surveys.org
+GitHub: github.com/sadc-surveys
+
+REGIONAL COORDINATOR:
+Email: coordinator@sadc.int
+LinkedIn: SADC-Survey-Network
+
+EMERGENCY SUPPORT:
+WhatsApp: +27 XX XXX XXXX")
+```
+
+**Bottom line:** We're here for you
+
+---
+
+class: center, middle, inverse
+
+# CONGRATULATIONS!
+
+## You are now a Certified Survey Sampling Specialist
+
+### The future of surveys in SADC is in your capable hands
+
+---
+
+class: center, middle, inverse
+
+# Thank You and Safe Travels!
+
+## See you at the 2026 Conference
+
+### Keep learning, keep growing, keep surveying!
+
+---
+
+## End of Workshop
+
+```{r closing, echo=FALSE}
+cat("
+════════════════════════════════════════════
+     SADC SURVEY SAMPLING WORKSHOP 2025
+           SUCCESSFULLY COMPLETED
+════════════════════════════════════════════
+
+    'Data is the new oil, but surveys
+      are still the best drilling rigs'
+
+             See you soon!
+════════════════════════════════════════════")
+```
+
+**Bottom line:** Journey continues...
+
+---
