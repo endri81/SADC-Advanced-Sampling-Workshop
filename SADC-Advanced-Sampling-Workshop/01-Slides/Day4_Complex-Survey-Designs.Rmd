@@ -1,6 +1,6 @@
 ---
 title: "Day 4: Complex Survey Designs"
-subtitle: "Part 1: Integration and Advanced Designs (Slides 1-75)"
+subtitle: "Complete Lecture Materials"
 author: "SADC Survey Sampling Workshop"
 date: "`r Sys.Date()`"
 output:
@@ -21,26 +21,30 @@ knitr::opts_chunk$set(
   warning = FALSE, 
   message = FALSE,
   fig.width = 10, 
-  fig.height = 4,
+  fig.height = 5,
   fig.align = "center",
   cache = FALSE,
   comment = "#>"
 )
 
-# Load packages
+# Load required packages
 library(tidyverse)
 library(survey)
 library(knitr)
 library(kableExtra)
+library(convey)
 
-# Create complex survey data
+# Set theme for plots
+theme_set(theme_minimal(base_size = 12))
+
+# Create complex survey data for examples
 set.seed(2024)
 n_regions <- 5
 n_districts <- 20
 n_psus <- 500
 n_households <- 10000
 
-# Create hierarchical structure
+# Generate hierarchical structure
 complex_data <- data.frame(
   region = rep(1:n_regions, each = n_households/n_regions),
   district = rep(1:n_districts, each = n_households/n_districts),
@@ -68,16 +72,19 @@ complex_data$income <- 50000 +
 
 complex_data$income <- pmax(complex_data$income, 5000)
 
-# Add more variables
+# Add demographic variables
 complex_data$age <- sample(18:80, n_households, replace = TRUE)
 complex_data$education <- pmin(20, rpois(n_households, 10))
-complex_data$employed <- rbinom(n_households, 1, plogis(-2 + 0.05 * complex_data$age - 0.001 * complex_data$age^2))
+complex_data$employed <- rbinom(n_households, 1, 
+                                plogis(-2 + 0.05 * complex_data$age - 
+                                      0.001 * complex_data$age^2))
 
-# Multi-phase indicator
-complex_data$phase1 <- rbinom(n_households, 1, 0.2)  # 20% in phase 1
-complex_data$phase2 <- ifelse(complex_data$phase1, rbinom(sum(complex_data$phase1), 1, 0.5), 0)
+# Multi-phase indicators
+complex_data$phase1 <- rbinom(n_households, 1, 0.2)
+complex_data$phase2 <- ifelse(complex_data$phase1, 
+                              rbinom(sum(complex_data$phase1), 1, 0.5), 0)
 
-# Panel indicator
+# Panel wave indicator
 complex_data$panel_wave <- sample(0:4, n_households, replace = TRUE, 
                                  prob = c(0.4, 0.2, 0.15, 0.15, 0.1))
 
@@ -86,85 +93,6 @@ complex_data$domain_age <- cut(complex_data$age,
                                breaks = c(0, 30, 50, 100),
                                labels = c("Young", "Middle", "Older"))
 complex_data$small_domain <- interaction(complex_data$region, complex_data$domain_age)
-
-# Functions for complex designs
-calculate_complex_deff <- function(data, outcome, cluster_var, strata_var = NULL) {
-  if(!is.null(strata_var)) {
-    design_complex <- svydesign(ids = as.formula(paste("~", cluster_var)),
-                                strata = as.formula(paste("~", strata_var)),
-                                data = data)
-  } else {
-    design_complex <- svydesign(ids = as.formula(paste("~", cluster_var)),
-                                data = data)
-  }
-  design_srs <- svydesign(ids = ~1, data = data)
-  
-  deff_val <- deff(svymean(as.formula(paste("~", outcome)), design_complex))
-  return(as.numeric(deff_val))
-}
-
-simulate_rotation <- function(n_waves = 8, n_panels = 4, overlap = 0.5) {
-  rotation_matrix <- matrix(0, nrow = n_panels, ncol = n_waves)
-  for(i in 1:n_panels) {
-    start <- i
-    end <- min(start + n_panels - 1, n_waves)
-    rotation_matrix[i, start:end] <- 1
-  }
-  return(rotation_matrix)
-}
-
-calculate_overlap <- function(rotation_matrix) {
-  n_waves <- ncol(rotation_matrix)
-  overlap <- numeric(n_waves - 1)
-  for(i in 1:(n_waves - 1)) {
-    overlap[i] <- sum(rotation_matrix[, i] * rotation_matrix[, i + 1]) / 
-                  sum(rotation_matrix[, i])
-  }
-  return(overlap)
-}
-# PPS sampling of EAs using systematic sampling
-sample_pps_systematic <- function(frame, n_sample, size_var) {
-  # Randomly sort the frame to ensure implicit stratification
-  frame <- frame[order(runif(nrow(frame))), ]
-  
-  frame$cumsize <- cumsum(frame[[size_var]])
-  total_size <- sum(frame[[size_var]])
-  interval <- total_size / n_sample
-  
-  # Pick a random starting point
-  start <- runif(1, 0, interval)
-  selections <- start + (0:(n_sample - 1)) * interval
-  
-  # Identify which units are selected
-  selected_indices <- sapply(selections, function(s) {
-    which(frame$cumsize >= s)[1]
-  })
-  
-  frame$selected <- 0
-  frame$selected[selected_indices] <- 1
-  frame$inclusion_prob <- n_sample * frame[[size_var]] / total_size
-  
-  return(frame)
-}
-# Simulate household data for selected EAs
-simulate_survey_data <- function(selected_eas, hh_per_ea = 15) {
-  do.call(rbind, lapply(1:nrow(selected_eas), function(i) {
-    ea_info <- selected_eas[i, ]
-    
-    # Generate household-level data with clustering
-    hh_poverty <- rbinom(hh_per_ea, 1, ea_info$Poverty_EA)
-    
-    data.frame(
-      District = ea_info$District,
-      EA_ID = ea_info$EA_ID,
-      HH_ID = paste0(ea_info$EA_ID, "_HH", 1:hh_per_ea),
-      Urban = ea_info$Urban,
-      Poor = hh_poverty,
-      Weight = 1 / (ea_info$inclusion_prob * (hh_per_ea / ea_info$HH_Count)),
-      stringsAsFactors = FALSE
-    )
-  }))
-}
 ```
 
 ---
@@ -194,7 +122,7 @@ Day 5: Special Topics & Future
 
 ## Today's Roadmap
 
-```{r day4_schedule}
+```{r day4_schedule, echo=FALSE}
 schedule <- data.frame(
   Part = 1:5,
   Time = c("08:00-09:30", "09:45-11:15", "11:30-13:00", 
@@ -206,7 +134,7 @@ schedule <- data.frame(
 )
 
 kable(schedule) %>%
-  kable_styling(bootstrap_options = "striped", font_size = 12)
+  kable_styling(bootstrap_options = "striped", font_size = 14)
 ```
 
 **Bottom line:** Master complexity today
@@ -230,8 +158,7 @@ kable(schedule) %>%
 
 ## Complexity in Practice
 
-```{r complexity_viz, fig.height=4}
-# Visualize design complexity
+```{r complexity_viz, echo=FALSE, fig.height=5}
 complexity_levels <- data.frame(
   Design = c("SRS", "Stratified", "Cluster", "Two-stage",
             "Stratified\nCluster", "Multi-phase\nPanel"),
@@ -240,58 +167,47 @@ complexity_levels <- data.frame(
 )
 
 ggplot(complexity_levels, aes(x = Components, y = Difficulty)) +
-  geom_point(size = 8, color = "darkblue") +
-  geom_text(aes(label = Design), size = 3, color = "white") +
-  theme_minimal() +
+  geom_point(size = 10, color = "darkblue") +
+  geom_text(aes(label = Design), size = 4, color = "white") +
+  scale_x_continuous(breaks = 1:6) +
+  scale_y_continuous(breaks = 1:8) +
   labs(x = "Number of Design Components",
        y = "Implementation Difficulty",
-       title = "Survey Complexity Increases Non-linearly")
+       title = "Survey Complexity Increases Non-linearly") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Complexity compounds
 
 ---
 
-## Our Complex Dataset
+## Our Complex Dataset Structure
 
-```{r show_complex_data}
-# Structure of our complex survey data
-c(Total_Records = nrow(complex_data),
+```{r show_complex_data, echo=FALSE}
+structure_summary <- c(
+  Total_Records = nrow(complex_data),
   Regions = length(unique(complex_data$region)),
   Districts = length(unique(complex_data$district)),
   PSUs = length(unique(complex_data$psu_id)),
   Strata = length(unique(complex_data$stratum)),
-  Panel_Waves = length(unique(complex_data$panel_wave[complex_data$panel_wave > 0])))
+  Panel_Waves = length(unique(complex_data$panel_wave[complex_data$panel_wave > 0]))
+)
+
+data.frame(
+  Metric = names(structure_summary),
+  Count = structure_summary
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** Hierarchical structure with multiple features
 
 ---
 
-## Real Survey Example
-
-```{r real_survey_example}
-# Example: National Living Standards Survey
-real_design <- data.frame(
-  Feature = c("Stratification", "Stages", "Phases", 
-             "Panel", "Domains", "Frames"),
-  Implementation = c("Province × Urban/Rural", "3 (District→PSU→HH)",
-                    "2 (Core + Detailed)", "4 waves, 50% overlap",
-                    "Province + Age + Gender", "Census + Updates")
-)
-
-kable(real_design) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Multiple dimensions of complexity
-
----
-
 ## Design Effect Decomposition
 
-```{r deff_decomposition}
-# How different features contribute to DEFF
+```{r deff_decomposition, echo=FALSE}
 deff_components <- data.frame(
   Component = c("Clustering", "Unequal weights", "Stratification",
                "Multi-stage", "Combined"),
@@ -300,7 +216,8 @@ deff_components <- data.frame(
 )
 
 kable(deff_components) %>%
-  kable_styling(font_size = 12)
+  kable_styling(font_size = 14) %>%
+  row_spec(5, bold = TRUE, background = "#f39c12")
 ```
 
 **Bottom line:** Net DEFF = product of components
@@ -309,8 +226,7 @@ kable(deff_components) %>%
 
 ## Visualizing Combined Effects
 
-```{r combined_effects, fig.height=4}
-# Show how effects combine
+```{r combined_effects, echo=FALSE, fig.height=5}
 effects <- data.frame(
   Stage = c("Base", "+Cluster", "+Weights", "+Strata", "Final"),
   DEFF = c(1.0, 1.8, 2.34, 1.99, 1.99),
@@ -318,20 +234,21 @@ effects <- data.frame(
 )
 
 ggplot(effects, aes(x = x, y = DEFF)) +
-  geom_line(size = 1.5, color = "red") +
-  geom_point(size = 4) +
-  geom_hline(yintercept = 1, linetype = "dashed") +
+  geom_line(size = 2, color = "red") +
+  geom_point(size = 5) +
+  geom_hline(yintercept = 1, linetype = "dashed", alpha = 0.5) +
   scale_x_continuous(breaks = 1:5, labels = effects$Stage) +
-  theme_minimal() +
+  scale_y_continuous(breaks = seq(1, 2.5, 0.5)) +
   labs(x = "", y = "Design Effect",
-       title = "Cumulative Design Effect")
+       title = "Cumulative Design Effect") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Each feature adds complexity
 
 ---
 
-## Combined Stratified-Cluster
+## Combined Stratified-Cluster Design
 
 ### Most common complex design:
 
@@ -346,17 +263,16 @@ ggplot(effects, aes(x = x, y = DEFF)) +
 
 ## Implementation Example
 
-```{r implementation_example}
-# Stratified two-stage cluster design
+```{r implementation_example, echo=FALSE}
 design_params <- data.frame(
   Level = c("National", "Strata", "PSUs", "Households"),
   Count = c(1, 10, 500, 10000),
   Selection = c("Census", "Census", "PPS", "SRS"),
-  Probability = c(1.0, 1.0, "Varies", 0.04)
+  Probability = c("1.0", "1.0", "Varies", "0.04")
 )
 
 kable(design_params) %>%
-  kable_styling(font_size = 12)
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** Clear hierarchy
@@ -365,9 +281,8 @@ kable(design_params) %>%
 
 ## Calculate Complex Weights
 
-```{r complex_weights}
+```{r complex_weights, echo=TRUE}
 # Weight calculation for stratified cluster
-# Example calculation
 strata_pop <- c(Urban = 3000000, Rural = 2000000)
 strata_psus <- c(Urban = 200, Rural = 300)
 selected_psus <- c(Urban = 60, Rural = 90)
@@ -392,21 +307,6 @@ c(Urban_Weight = round(weight_urban),
 
 ---
 
-## Knowledge Check #1
-
-### Quick review:
-
-1. Complex designs combine _______ features
-2. DEFF components multiply/add? _______
-3. Most common: stratified + _______
-4. Weights = 1 / _______
-
-Think first!
-
-**Bottom line:** Multiple, multiply, cluster, probability
-
----
-
 ## Multi-Phase Designs
 
 ### When to use phases:
@@ -425,8 +325,7 @@ Examples:
 
 ## Two-Phase Design
 
-```{r two_phase_design}
-# Two-phase (double sampling) design
+```{r two_phase_design, echo=FALSE}
 phase_design <- data.frame(
   Phase = c("Phase 1", "Phase 2"),
   Sample_Size = c(5000, 500),
@@ -436,7 +335,7 @@ phase_design <- data.frame(
 )
 
 kable(phase_design) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Equal cost, different information
@@ -445,13 +344,11 @@ kable(phase_design) %>%
 
 ## Phase 1 Selection
 
-```{r phase1_selection}
-# Simulate phase 1 selection
+```{r phase1_selection, echo=FALSE}
 set.seed(2024)
 n_phase1 <- 1000
 phase1_sample <- complex_data[sample(nrow(complex_data), n_phase1), ]
 
-# Basic measurements
 phase1_summary <- data.frame(
   Measure = c("Mean Age", "% Urban", "% Employed"),
   Value = c(round(mean(phase1_sample$age), 1),
@@ -460,7 +357,7 @@ phase1_summary <- data.frame(
 )
 
 kable(phase1_summary) %>%
-  kable_styling(font_size = 12)
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** Phase 1 gives basic info
@@ -469,23 +366,29 @@ kable(phase1_summary) %>%
 
 ## Phase 2 Selection
 
-```{r phase2_selection}
+```{r phase2_selection, echo=FALSE}
 # Select phase 2 based on phase 1 info
-# Stratified selection within phase 1
 phase1_sample$phase1_strata <- cut(phase1_sample$income,
                                    breaks = quantile(phase1_sample$income),
                                    labels = c("Q1", "Q2", "Q3", "Q4"))
 
-# Select from each stratum
 n_per_stratum <- 25
-phase2_indices <- phase1_sample %>%
+phase2_sample <- phase1_sample %>%
   group_by(phase1_strata) %>%
-  sample_n(min(n(), n_per_stratum)) %>%
-  pull(household_id)
+  sample_n(min(n(), n_per_stratum))
 
-c(Phase1_n = nrow(phase1_sample),
-  Phase2_n = length(phase2_indices),
-  Selection_Rate = round(length(phase2_indices)/nrow(phase1_sample), 3))
+phase2_summary <- c(
+  Phase1_n = nrow(phase1_sample),
+  Phase2_n = nrow(phase2_sample),
+  Selection_Rate = round(nrow(phase2_sample)/nrow(phase1_sample), 3)
+)
+
+data.frame(
+  Metric = names(phase2_summary),
+  Value = phase2_summary
+) %>%
+  kable() %>%
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** Phase 2 subsample of Phase 1
@@ -494,15 +397,16 @@ c(Phase1_n = nrow(phase1_sample),
 
 ## Two-Phase Weights
 
-```{r two_phase_weights}
+```{r two_phase_weights, echo=TRUE}
 # Calculate two-phase weights
+N <- nrow(complex_data)  # Population size
+n1 <- 1000               # Phase 1 sample size
+n2 <- 100                # Phase 2 sample size
+
 # Phase 1 weight
-N <- nrow(complex_data)
-n1 <- 1000
 w1 <- N / n1
 
-# Phase 2 weight (within phase 1)
-n2 <- 100
+# Phase 2 weight (conditional on Phase 1)
 w2_given_1 <- n1 / n2
 
 # Combined weight
@@ -517,10 +421,9 @@ c(Phase1_Weight = w1,
 
 ---
 
-## Efficiency of Two-Phase
+## Efficiency of Two-Phase Sampling
 
-```{r two_phase_efficiency, fig.height=3.5}
-# Compare single vs two-phase
+```{r two_phase_efficiency, echo=FALSE, fig.height=5}
 costs <- expand.grid(
   n1 = seq(100, 2000, 100),
   n2_ratio = c(0.1, 0.2, 0.3)
@@ -531,29 +434,14 @@ costs$variance <- 1 / costs$n2  # Simplified
 
 ggplot(costs, aes(x = total_cost/1000, y = 1/variance, 
                    color = factor(n2_ratio))) +
-  geom_line(size = 1.2) +
-  theme_minimal() +
+  geom_line(size = 1.5) +
   labs(x = "Total Cost ($1000s)", y = "Precision",
        color = "Phase 2\nRatio",
-       title = "Two-Phase Efficiency")
+       title = "Two-Phase Efficiency") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Optimal phase 2 ratio ≈ 0.2
-
----
-
-## Energy Check
-
-### ⚡ Quick refresh (30 seconds):
-
-1. Stand and stretch
-2. Deep breath × 3
-3. Think of one complex survey you know
-4. Share with neighbor
-
-Ready to continue?
-
-**Bottom line:** Stay engaged!
 
 ---
 
@@ -572,17 +460,17 @@ Ready to continue?
 
 ## Domain Sample Sizes
 
-```{r domain_sizes}
-# Check domain sample sizes
+```{r domain_sizes, echo=FALSE}
+set.seed(2024)
 domain_counts <- complex_data %>%
-  sample_n(2000) %>%  # Simulate sample
+  sample_n(2000) %>%
   group_by(region, domain_age) %>%
   summarise(n = n(), .groups = 'drop') %>%
   arrange(n)
 
 head(domain_counts, 8) %>%
   kable() %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Some domains too small
@@ -591,15 +479,14 @@ head(domain_counts, 8) %>%
 
 ## Small Domain Problem
 
-```{r small_domain_problem, fig.height=3.5}
-# Visualize small domain problem
+```{r small_domain_problem, echo=FALSE, fig.height=5}
 domain_counts %>%
   ggplot(aes(x = n, y = reorder(paste(region, domain_age), n))) +
   geom_bar(stat = "identity", fill = "coral") +
-  geom_vline(xintercept = 30, linetype = "dashed", color = "red") +
-  theme_minimal() +
+  geom_vline(xintercept = 30, linetype = "dashed", color = "red", size = 1) +
   labs(x = "Sample Size", y = "Domain",
-       title = "Many Domains Below Minimum (n=30)")
+       title = "Many Domains Below Minimum (n=30)") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Direct estimation fails for small domains
@@ -608,7 +495,7 @@ domain_counts %>%
 
 ## Solutions for Small Domains
 
-```{r small_domain_solutions}
+```{r small_domain_solutions, echo=FALSE}
 solutions <- data.frame(
   Approach = c("Increase sample", "Collapse domains", 
               "Model-based", "Small area estimation"),
@@ -618,117 +505,10 @@ solutions <- data.frame(
 )
 
 kable(solutions) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Multiple strategies available
-
----
-
-## Planned vs Unplanned Domains
-
-```{r planned_unplanned}
-domain_types <- data.frame(
-  Type = c("Planned", "Unplanned"),
-  Example = c("Provinces", "Age × Education × Region"),
-  Sample_Size = c("Adequate", "Often too small"),
-  Precision = c("Controlled", "Unreliable"),
-  Solution = c("Design ensures n", "Post-hoc methods")
-)
-
-kable(domain_types) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Plan for important domains
-
----
-
-## Ensuring Domain Coverage
-
-```{r domain_coverage}
-# Minimum sample per domain
-domains <- 10  # Number of planned domains
-total_n <- 3000
-equal_alloc <- total_n / domains
-min_required <- 100
-
-needed_n <- domains * min_required
-
-c(Equal_Allocation = equal_alloc,
-  Minimum_Required = min_required,
-  Total_Needed = needed_n,
-  Current_Total = total_n,
-  Sufficient = total_n >= needed_n)
-```
-
-**Bottom line:** Plan sample size for domains
-
----
-
-## Cross-Classification Issues
-
-```{r cross_classification, fig.height=3.5}
-# Domains multiply quickly
-classifications <- data.frame(
-  Variables = 1:4,
-  Example = c("Region", "+ Urban/Rural", "+ Age Group", "+ Gender"),
-  Categories = c(5, 10, 30, 60),
-  Min_Sample = c(500, 1000, 3000, 6000)
-)
-
-ggplot(classifications, aes(x = Variables, y = Categories)) +
-  geom_line(size = 1.5, color = "red") +
-  geom_point(size = 3) +
-  theme_minimal() +
-  labs(y = "Number of Domains",
-       title = "Domain Explosion with Cross-Classification")
-```
-
-**Bottom line:** Domains multiply exponentially
-
----
-
-## Weight Adjustments for Domains
-
-```{r domain_weights}
-# Adjust weights for domain estimation
-cat("Domain Weight Adjustments:
-
-1. Base weights from design
-2. Non-response adjustment within domain
-3. Post-stratification to domain totals
-4. Calibration to known margins
-
-Result: Domain-specific weights")
-```
-
-**Bottom line:** Domains may need separate weights
-
----
-
-## Composite Estimators
-
-### Combining direct and indirect:
-
-```{r composite_estimator}
-# Composite estimator example
-direct_est <- 0.25  # Direct domain estimate
-indirect_est <- 0.30  # Model-based estimate
-direct_var <- 0.01  # Variance of direct
-model_var <- 0.002  # Variance of model
-
-# Optimal combination
-gamma <- model_var / (direct_var + model_var)
-composite <- gamma * direct_est + (1 - gamma) * indirect_est
-
-c(Direct = direct_est,
-  Indirect = indirect_est,
-  Gamma = round(gamma, 3),
-  Composite = round(composite, 3))
-```
-
-**Bottom line:** Optimal weighting reduces variance
 
 ---
 
@@ -736,7 +516,7 @@ c(Direct = direct_est,
 
 ### Using multiple sampling frames:
 
-```{r multi_frame}
+```{r multi_frame, echo=FALSE}
 frames <- data.frame(
   Frame = c("Area frame", "List frame", "Phone frame"),
   Coverage = c("100%", "80%", "60%"),
@@ -746,7 +526,7 @@ frames <- data.frame(
 )
 
 kable(frames) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Combine frames for better coverage
@@ -755,426 +535,102 @@ kable(frames) %>%
 
 ## Dual Frame Design
 
-```{r dual_frame, fig.height=3.5}
-# Visualize dual frame overlap
-set.seed(2024)
-theta <- seq(0, 2*pi, length.out = 100)
-frame_a <- data.frame(
-  x = 2*cos(theta) - 1,
-  y = 2*sin(theta)
-)
-frame_b <- data.frame(
-  x = 2*cos(theta) + 1,
-  y = 2*sin(theta)
+```{r dual_frame, echo=FALSE, fig.height=5}
+# Create Venn diagram for dual frame
+library(ggplot2)
+library(ggforce)
+
+# Create data for two circles
+df <- data.frame(
+  x = c(-0.5, 0.5),
+  y = c(0, 0),
+  r = c(1, 1),
+  frame = c("Frame A", "Frame B")
 )
 
 ggplot() +
-  geom_polygon(data = frame_a, aes(x, y), fill = "blue", alpha = 0.3) +
-  geom_polygon(data = frame_b, aes(x, y), fill = "red", alpha = 0.3) +
-  annotate("text", x = -2, y = 0, label = "Frame A\nonly", size = 5) +
-  annotate("text", x = 2, y = 0, label = "Frame B\nonly", size = 5) +
+  geom_circle(data = df, aes(x0 = x, y0 = y, r = r, fill = frame), 
+              alpha = 0.3, size = 1) +
+  scale_fill_manual(values = c("blue", "red")) +
+  annotate("text", x = -1.2, y = 0, label = "Frame A\nonly", size = 5) +
+  annotate("text", x = 1.2, y = 0, label = "Frame B\nonly", size = 5) +
   annotate("text", x = 0, y = 0, label = "Overlap", size = 5) +
-  theme_minimal() +
-  labs(title = "Dual Frame Coverage")
+  coord_fixed() +
+  theme_void() +
+  labs(title = "Dual Frame Coverage") +
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5, size = 16))
 ```
 
 **Bottom line:** Handle overlap carefully
 
 ---
 
-## Dual Frame Weights
+## Panel Survey Designs
 
-```{r dual_frame_weights}
-# Weight calculation for dual frame
-# Probabilities
-p_a <- 0.05  # Selection prob in frame A
-p_b <- 0.10  # Selection prob in frame B
-p_ab <- 0.02  # Prob selected from both
+### Cross-section vs Panel:
 
-# Compositing factor
-lambda <- 0.5  # Weight given to frame A
-
-# Combined weight for overlap domain
-w_overlap <- lambda/p_a + (1-lambda)/p_b
-
-c(Frame_A_only = round(1/p_a),
-  Frame_B_only = round(1/p_b),
-  Overlap = round(w_overlap))
-```
-
-**Bottom line:** Overlap needs special weights
-
----
-
-## Progress Check
-
-### ✅ What we've covered:
-
-- Complex design integration
-- Multi-phase sampling
-- Domain estimation challenges
-- Multi-frame approaches
-
-### 🎯 Coming next:
-- Panel designs
-- Rotation patterns
-- Advanced calibration
-
-**Bottom line:** Building complexity step by step
-
----
-
-## Group Discussion
-
-### Discuss (3 minutes):
-
-With your neighbor:
-1. What's the most complex survey in your country?
-2. What features does it combine?
-3. Main challenges faced?
-
-Share one insight!
-
-**Bottom line:** Learn from peers
-
----
-
-## Mixed-Mode Surveys
-
-### Combining collection modes:
-
-```{r mixed_mode}
-modes <- data.frame(
-  Population = c("Urban young", "Urban old", "Rural"),
-  Primary = c("Web", "Phone", "Face-to-face"),
-  Secondary = c("Phone", "Face-to-face", "Phone"),
-  Response_Rate = c("40%", "60%", "75%")
+```{r panel_comparison, echo=FALSE}
+comparison <- data.frame(
+  Aspect = c("Design", "Sample", "Measurement", "Analysis", "Cost"),
+  Cross_Section = c("New sample each time", "Independent", 
+                   "Status at time point", "Levels only", "Lower"),
+  Panel = c("Same units over time", "Dependent", 
+           "Change over time", "Levels + change", "Higher")
 )
 
-kable(modes) %>%
-  kable_styling(font_size = 11)
+kable(comparison) %>%
+  kable_styling(font_size = 12)
 ```
 
-**Bottom line:** Match mode to population
+**Bottom line:** Panels measure change
 
 ---
 
-## Mode Effects
+## Fixed Panel Design
 
-```{r mode_effects, fig.height=3.5}
-# Different modes give different results
-mode_data <- data.frame(
-  Mode = rep(c("F2F", "Phone", "Web"), each = 100),
-  Response = c(rnorm(100, 50, 10),
-              rnorm(100, 45, 12),
-              rnorm(100, 55, 8))
-)
+```{r fixed_panel, echo=FALSE, fig.height=5}
+waves <- 1:5
+sample_size <- c(1000, 920, 850, 780, 720)
 
-ggplot(mode_data, aes(x = Response, fill = Mode)) +
-  geom_density(alpha = 0.5) +
-  theme_minimal() +
-  labs(title = "Mode Effects on Responses",
-       subtitle = "Same question, different distributions")
+data.frame(Wave = waves, Size = sample_size) %>%
+  ggplot(aes(x = Wave, y = Size)) +
+  geom_line(size = 2, color = "darkblue") +
+  geom_point(size = 4) +
+  scale_x_continuous(breaks = 1:5) +
+  labs(y = "Sample Size",
+       title = "Fixed Panel: Attrition Over Time") +
+  theme(text = element_text(size = 14))
 ```
 
-**Bottom line:** Mode affects measurement
+**Bottom line:** Same units, decreasing size
 
 ---
 
-## Adaptive Survey Design
+## Rotating Panel Design
 
-### Adjusting during collection:
+```{r rotating_panel, echo=FALSE}
+# Create rotation pattern
+rotation <- matrix(c(
+  1,1,1,1,0,0,0,0,
+  0,1,1,1,1,0,0,0,
+  0,0,1,1,1,1,0,0,
+  0,0,0,1,1,1,1,0
+), nrow = 4, byrow = TRUE)
 
-```{r adaptive_design}
-cat("Adaptive Design Process:
+rownames(rotation) <- paste("Panel", 1:4)
+colnames(rotation) <- paste("Wave", 1:8)
 
-1. Monitor key indicators daily
-   - Response rates by stratum
-   - Cost per interview
-   - Data quality metrics
-
-2. Identify problems
-   - Low response domains
-   - Budget overruns
-   - Quality issues
-
-3. Adapt strategies
-   - Change mode
-   - Adjust incentives
-   - Reallocate effort
-
-4. Document changes")
+kable(rotation) %>%
+  kable_styling(font_size = 12) %>%
+  column_spec(which(rotation[1,] == 1) + 1, background = "lightblue")
 ```
 
-**Bottom line:** Responsive to real-time data
+**Bottom line:** Systematic replacement pattern
 
 ---
 
-## Adaptive Triggers
-
-```{r adaptive_triggers}
-triggers <- data.frame(
-  Indicator = c("Response rate", "Cost per complete", "Item missing"),
-  Threshold = c("< 50%", "> $150", "> 10%"),
-  Action = c("Increase attempts", "Switch to phone", "Retrain staff"),
-  Timing = c("Week 2", "Week 3", "Daily")
-)
-
-kable(triggers) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Pre-planned responses
-
----
-
-## Quality-Cost Trade-offs
-
-```{r quality_cost, fig.height=3.5}
-# Pareto frontier for design choices
-designs <- data.frame(
-  Design = 1:20,
-  Cost = runif(20, 50, 200),
-  Quality = 100 - runif(20, 5, 40)
-)
-
-# Identify efficient designs
-designs$Efficient <- FALSE
-for(i in 1:nrow(designs)) {
-  designs$Efficient[i] <- !any(
-    designs$Cost < designs$Cost[i] & 
-    designs$Quality > designs$Quality[i]
-  )
-}
-
-ggplot(designs, aes(x = Cost, y = Quality)) +
-  geom_point(aes(color = Efficient), size = 3) +
-  geom_smooth(data = filter(designs, Efficient), 
-              method = "loess", se = FALSE) +
-  theme_minimal() +
-  labs(title = "Efficient Design Frontier",
-       x = "Cost (1000s)", y = "Quality Score")
-```
-
-**Bottom line:** Choose from efficient frontier
-
----
-
-## Variance Estimation Complexity
-
-```{r variance_complexity}
-# Variance methods by design complexity
-var_methods <- data.frame(
-  Design = c("SRS", "Stratified", "Cluster", "Complex"),
-  Formula = c("Simple", "Closed form", "Complex", "Intractable"),
-  Method = c("Direct", "Direct", "Linearization", "Replication"),
-  Software = c("Any", "Any", "Specialized", "Specialized")
-)
-
-kable(var_methods) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Complex designs need special methods
-
----
-
-## Replication Methods
-
-```{r replication_methods}
-# Types of replication for variance
-replication_types <- data.frame(
-  Method = c("Jackknife", "Bootstrap", "BRR", "Fay"),
-  Replicates = c("n", "100-500", "L", "L"),
-  Best_For = c("Smooth statistics", "Any statistic", 
-               "2 PSU/stratum", "Adjusted BRR"),
-  Computation = c("Fast", "Slow", "Fast", "Fast")
-)
-
-kable(replication_types) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Choose based on design and needs
-
----
-
-## Software for Complex Designs
-
-```{r software_complex}
-cat("R Code for Complex Design:
-
-library(survey)
-
-# Define complex design
-complex_design <- svydesign(
-  ids = ~ psu_id + household_id,  # Multi-stage
-  strata = ~ region + urban,      # Multiple strata
-  weights = ~ final_weight,       # Combined weights
-  fpc = ~ fpc1 + fpc2,            # Finite population
-  data = survey_data
-)
-
-# Estimation with proper variance
-svymean(~ income, complex_design)
-svyby(~ income, ~ domain, complex_design, svymean)")
-```
-
-**Bottom line:** Software handles complexity
-
----
-
-## Common Complex Design Errors
-
-```{r common_errors}
-errors <- data.frame(
-  Error = c("Wrong variance formula", "Ignoring clustering",
-           "Domain weights wrong", "Missing design features"),
-  Impact = c("SEs too small", "Invalid inference",
-           "Biased domain estimates", "Wrong precision"),
-  Fix = c("Use survey package", "Specify all stages",
-         "Separate calibration", "Document fully")
-)
-
-kable(errors) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Attention to detail critical
-
----
-
-## Exercise: Design Integration
-
-### Your task (5 minutes):
-
-Combine these requirements:
-- National survey, n = 5000
-- Need provincial estimates (8 provinces)
-- Urban/rural stratification
-- Cluster sampling for costs
-- Panel component (25%)
-
-Sketch your design!
-
-**Bottom line:** Apply concepts
-
----
-
-## Exercise Solution
-
-```{r exercise_solution}
-# Integrated design solution
-solution <- data.frame(
-  Component = c("Stratification", "PSUs", "Sample Size",
-               "Panel", "Rotation"),
-  Design = c("8 provinces × 2 areas = 16 strata",
-            "25 PSUs per stratum = 400 total",
-            "5000 HH (12-13 per PSU)",
-            "1250 panel, 3750 cross-section",
-            "Panel in 4 waves, 25% overlap")
-)
-
-kable(solution) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Systematic integration
-
----
-
-## Real Example: EU-SILC
-
-```{r eu_silc}
-# European Survey on Income and Living Conditions
-silc_design <- data.frame(
-  Feature = c("Countries", "Design", "Sample", "Panel", "Topics"),
-  Detail = c("28 EU countries", "National flexibility",
-            "~100,000 HH", "4-year rotation",
-            "Income, poverty, exclusion")
-)
-
-kable(silc_design) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Complex international standard
-
----
-
-## Coordination Challenges
-
-```{r coordination}
-challenges <- data.frame(
-  Level = c("International", "National", "Regional", "Field"),
-  Challenge = c("Harmonization", "Resources", "Training", "Quality"),
-  Solution = c("Standards", "Partnerships", "Cascade training", "Monitoring")
-)
-
-kable(challenges) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Complexity requires coordination
-
----
-
-## Documentation for Complex Designs
-
-```{r documentation_1}
-cat("Essential Documentation:
-
-1. Design specification
-   - All stages and phases
-   - Selection methods
-   - Stratification scheme
-
-2. Weight calculation
-   - Base weights
-   - Adjustments
-   - Final weights
-
-3. Variance estimation
-   - Method used
-   - Software settings
-   - Assumptions
-
-4. Quality indicators
-   - Response rates by domain
-   - Design effects
-   - Coverage assessment")
-```
-
-**Bottom line:** Document everything!
-
----
-
-## Quality Framework
-
-```{r quality_framework, fig.height=3.5}
-# Total Survey Error components
-tse_components <- data.frame(
-  Component = c("Coverage", "Sampling", "Nonresponse", 
-               "Measurement", "Processing"),
-  Magnitude = c(3, 2, 4, 5, 1),
-  Control = c("Frame quality", "Design", "Field effort",
-             "Training", "Systems")
-)
-
-ggplot(tse_components, aes(x = reorder(Component, Magnitude), 
-                           y = Magnitude)) +
-  geom_bar(stat = "identity", fill = "darkred") +
-  coord_flip() +
-  theme_minimal() +
-  labs(x = "", y = "Error Magnitude",
-       title = "Total Survey Error Components")
-```
-
-**Bottom line:** Measurement often biggest error
-
----
-
-## Part 1 Summary
+## Summary: Part 1
 
 ### You've learned:
 
@@ -1182,73 +638,20 @@ ggplot(tse_components, aes(x = reorder(Component, Magnitude),
 ✅ Multi-phase sampling benefits  
 ✅ Domain estimation challenges  
 ✅ Multi-frame approaches  
-✅ Adaptive design concepts  
+✅ Panel design concepts  
 
 **Bottom line:** Integration is key!
 
 ---
-
-## Key Takeaways
-
-```{r key_takeaways}
-takeaways <- data.frame(
-  Number = 1:5,
-  Lesson = c("Complex designs are standard, not exception",
-            "Each feature adds complexity multiplicatively",
-            "Software essential for proper analysis",
-            "Documentation critical for complex designs",
-            "Plan for domains from the start")
-)
-
-kable(takeaways) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Embrace complexity
-
----
-
-## Quick Review
-
-### Test yourself:
-
-1. Two-phase is useful when _______ is expensive
-2. Small domains need _______ methods
-3. Dual frame requires handling _______
-4. Mode effects impact _______
-
-**Bottom line:** Measurement, model-based, overlap, responses
-
----
-
-## Break Time!
-
-## ☕ 15-Minute Break
-
-### Before you go:
-- Save your work
-- Think about complex surveys you know
-- Prepare questions
-
-### When we return:
-- Multi-phase details
-- Panel designs
-- Advanced calibration
-
-**Bottom line:** Rest and return ready!
-
----
-
 class: center, middle, inverse
 
 # End of Part 1
 
-## Slides 1-75 Complete
+## Ready for more complexity?
 
-### Next: Part 2 - Multi-phase and Panel Designs
+### Break: 15 minutes
 
 ---
-
 
 ---
 
@@ -1271,7 +674,7 @@ Ready for:
 
 ### Cross-section vs Panel:
 
-```{r panel_comparison}
+```{r panel_comparison_76, echo=FALSE}
 comparison <- data.frame(
   Aspect = c("Design", "Sample", "Measurement", "Analysis", "Cost"),
   Cross_Section = c("New sample each time", "Independent", 
@@ -1281,7 +684,7 @@ comparison <- data.frame(
 )
 
 kable(comparison) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Panels measure change
@@ -1290,7 +693,7 @@ kable(comparison) %>%
 
 ## Types of Panel Designs
 
-```{r panel_types}
+```{r panel_types_77, echo=FALSE}
 panel_types <- data.frame(
   Type = c("Fixed Panel", "Rotating Panel", "Split Panel", "Access Panel"),
   Description = c("Same units all waves", "Gradual replacement",
@@ -1301,7 +704,7 @@ panel_types <- data.frame(
 )
 
 kable(panel_types) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** Different types for different needs
@@ -1310,18 +713,19 @@ kable(panel_types) %>%
 
 ## Fixed Panel Design
 
-```{r fixed_panel, fig.height=3.5}
-# Visualize fixed panel
+```{r fixed_panel_78, echo=FALSE, fig.height=5}
 waves <- 1:5
 sample_size <- c(1000, 920, 850, 780, 720)
 
 data.frame(Wave = waves, Size = sample_size) %>%
   ggplot(aes(x = Wave, y = Size)) +
-  geom_line(size = 1.5, color = "darkblue") +
-  geom_point(size = 3) +
-  theme_minimal() +
+  geom_line(size = 2, color = "darkblue") +
+  geom_point(size = 4) +
+  scale_x_continuous(breaks = 1:5) +
+  scale_y_continuous(limits = c(0, 1100)) +
   labs(y = "Sample Size",
-       title = "Fixed Panel: Attrition Over Time")
+       title = "Fixed Panel: Attrition Over Time") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Same units, decreasing size
@@ -1330,16 +734,24 @@ data.frame(Wave = waves, Size = sample_size) %>%
 
 ## Rotating Panel Design
 
-```{r rotating_panel}
-# Create rotation pattern
-rotation <- simulate_rotation(n_waves = 8, n_panels = 4, overlap = 0.75)
+```{r rotating_panel_79, echo=FALSE}
+# Create rotation pattern function
+simulate_rotation <- function(n_waves = 8, n_panels = 4) {
+  rotation_matrix <- matrix(0, nrow = n_panels, ncol = n_waves)
+  for(i in 1:n_panels) {
+    start <- i
+    end <- min(start + n_panels - 1, n_waves)
+    rotation_matrix[i, start:end] <- 1
+  }
+  return(rotation_matrix)
+}
 
-# Display as matrix
+rotation <- simulate_rotation(8, 4)
 rownames(rotation) <- paste("Panel", 1:4)
 colnames(rotation) <- paste("Wave", 1:8)
 
 kable(rotation) %>%
-  kable_styling(font_size = 10) %>%
+  kable_styling(font_size = 12) %>%
   column_spec(which(rotation[1,] == 1) + 1, background = "lightblue")
 ```
 
@@ -1349,8 +761,7 @@ kable(rotation) %>%
 
 ## Rotation Pattern Visualization
 
-```{r rotation_viz, fig.height=3.5}
-# Visualize rotation pattern
+```{r rotation_viz_80, echo=FALSE, fig.height=5}
 rotation_df <- as.data.frame(rotation) %>%
   mutate(Panel = 1:4) %>%
   pivot_longer(-Panel, names_to = "Wave", values_to = "InSample") %>%
@@ -1360,8 +771,10 @@ ggplot(rotation_df, aes(x = Wave, y = Panel, fill = factor(InSample))) +
   geom_tile(color = "white", size = 1) +
   scale_fill_manual(values = c("white", "darkblue"), 
                    labels = c("Out", "In")) +
-  theme_minimal() +
-  labs(fill = "Status", title = "4-Wave Rotating Panel Pattern")
+  scale_x_continuous(breaks = 1:8) +
+  scale_y_continuous(breaks = 1:4) +
+  labs(fill = "Status", title = "4-Wave Rotating Panel Pattern") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Each panel in for 4 waves
@@ -1370,8 +783,18 @@ ggplot(rotation_df, aes(x = Wave, y = Panel, fill = factor(InSample))) +
 
 ## Overlap Between Waves
 
-```{r overlap_calculation}
+```{r overlap_calculation_81, echo=FALSE}
 # Calculate overlap between consecutive waves
+calculate_overlap <- function(rotation_matrix) {
+  n_waves <- ncol(rotation_matrix)
+  overlap <- numeric(n_waves - 1)
+  for(i in 1:(n_waves - 1)) {
+    overlap[i] <- sum(rotation_matrix[, i] * rotation_matrix[, i + 1]) / 
+                  sum(rotation_matrix[, i])
+  }
+  return(overlap)
+}
+
 overlap <- calculate_overlap(rotation)
 
 data.frame(
@@ -1379,7 +802,7 @@ data.frame(
   Overlap = paste0(round(overlap * 100), "%")
 ) %>%
   kable() %>%
-  kable_styling(font_size = 12)
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** 75% overlap maintains stability
@@ -1388,8 +811,7 @@ data.frame(
 
 ## Panel Sample Size Planning
 
-```{r panel_size_planning}
-# Account for attrition
+```{r panel_size_planning_82, echo=FALSE}
 initial_n <- 1000
 attrition_rate <- 0.10  # 10% per wave
 n_waves <- 5
@@ -1408,7 +830,7 @@ data.frame(
   Cumulative_Loss = paste0(round((1 - sample_sizes/initial_n) * 100), "%")
 ) %>%
   kable() %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Plan for 35-40% total attrition
@@ -1417,7 +839,7 @@ data.frame(
 
 ## Initial Wave Oversample
 
-```{r oversample_planning}
+```{r oversample_planning_83, echo=TRUE}
 # Calculate initial oversample needed
 target_final <- 500  # Need 500 in final wave
 expected_retention <- 0.65  # 65% retained
@@ -1435,8 +857,7 @@ c(Target_Final_Wave = target_final,
 
 ## Attrition Patterns
 
-```{r attrition_patterns, fig.height=3.5}
-# Different attrition patterns
+```{r attrition_patterns_84, echo=FALSE, fig.height=5}
 set.seed(2024)
 waves <- 1:6
 constant <- 100 * (0.9)^(waves-1)
@@ -1450,11 +871,13 @@ attrition_data <- data.frame(
 )
 
 ggplot(attrition_data, aes(x = Wave, y = Retained, color = Pattern)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  theme_minimal() +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  scale_y_continuous(limits = c(0, 100)) +
   labs(y = "% Retained",
-       title = "Different Attrition Patterns")
+       title = "Different Attrition Patterns") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Early waves most critical
@@ -1463,8 +886,7 @@ ggplot(attrition_data, aes(x = Wave, y = Retained, color = Pattern)) +
 
 ## Attrition Bias
 
-```{r attrition_bias}
-# Who drops out?
+```{r attrition_bias_85, echo=FALSE}
 attrition_profile <- data.frame(
   Characteristic = c("Young adults", "Mobile", "Low education",
                     "Urban", "High income"),
@@ -1476,7 +898,7 @@ attrition_profile <- data.frame(
 )
 
 kable(attrition_profile) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Attrition not random
@@ -1485,7 +907,7 @@ kable(attrition_profile) %>%
 
 ## Retention Strategies
 
-```{r retention_strategies}
+```{r retention_strategies_86, echo=FALSE}
 strategies <- data.frame(
   Strategy = c("Incentives", "Tracking", "Engagement", 
               "Flexibility", "Relationship"),
@@ -1497,7 +919,7 @@ strategies <- data.frame(
 )
 
 kable(strategies) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Multiple strategies needed
@@ -1508,8 +930,7 @@ kable(strategies) %>%
 
 ### Respondents change behavior:
 
-```{r panel_conditioning, fig.height=3.5}
-# Conditioning effect example
+```{r panel_conditioning_87, echo=FALSE, fig.height=5}
 waves <- 1:5
 true_value <- rep(50, 5)
 reported <- c(50, 48, 45, 44, 43)  # Decreasing due to conditioning
@@ -1517,11 +938,12 @@ reported <- c(50, 48, 45, 44, 43)  # Decreasing due to conditioning
 data.frame(Wave = waves, True = true_value, Reported = reported) %>%
   pivot_longer(-Wave, names_to = "Type", values_to = "Value") %>%
   ggplot(aes(x = Wave, y = Value, color = Type)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  theme_minimal() +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set2") +
   labs(y = "Reported Value",
-       title = "Panel Conditioning Effect")
+       title = "Panel Conditioning Effect") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Participation affects responses
@@ -1530,7 +952,7 @@ data.frame(Wave = waves, True = true_value, Reported = reported) %>%
 
 ## Testing for Conditioning
 
-```{r test_conditioning}
+```{r test_conditioning_88, echo=TRUE}
 # Compare panel to fresh cross-section
 comparison_test <- data.frame(
   Wave = c(3, 3),
@@ -1557,7 +979,7 @@ c(Difference = diff,
 
 ## Panel Weights
 
-```{r panel_weights}
+```{r panel_weights_89, echo=FALSE}
 cat("Panel Weight Components:
 
 1. Base weight (Wave 1)
@@ -1581,7 +1003,7 @@ cat("Panel Weight Components:
 
 ## Attrition Weight Adjustment
 
-```{r attrition_weights}
+```{r attrition_weights_90, echo=TRUE}
 # Model attrition and adjust weights
 set.seed(2024)
 wave1_data <- data.frame(
@@ -1592,7 +1014,8 @@ wave1_data <- data.frame(
 )
 
 # Simulate attrition (depends on characteristics)
-prob_respond <- plogis(-1 + 0.02 * wave1_data$age + 0.3 * wave1_data$education)
+prob_respond <- plogis(-1 + 0.02 * wave1_data$age + 
+                       0.3 * wave1_data$education)
 wave1_data$responded_w2 <- rbinom(100, 1, prob_respond)
 
 # Calculate attrition weights
@@ -1605,7 +1028,8 @@ wave1_data$attrition_weight <- ifelse(
 
 c(Response_Rate_W2 = round(response_rate, 3),
   Mean_Base_Weight = mean(wave1_data$base_weight),
-  Mean_Adjusted_Weight = round(mean(wave1_data$attrition_weight[wave1_data$responded_w2])))
+  Mean_Adjusted_Weight = round(mean(
+    wave1_data$attrition_weight[wave1_data$responded_w2])))
 ```
 
 **Bottom line:** Weights compensate for attrition
@@ -1631,7 +1055,7 @@ Think before continuing!
 
 ### Types of change estimates:
 
-```{r change_types}
+```{r change_types_92, echo=FALSE}
 change_types <- data.frame(
   Type = c("Gross change", "Net change", "Individual change", "Transitions"),
   Definition = c("Total movement", "Aggregate difference", 
@@ -1642,7 +1066,7 @@ change_types <- data.frame(
 )
 
 kable(change_types) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Panels reveal gross change
@@ -1651,21 +1075,19 @@ kable(change_types) %>%
 
 ## Gross vs Net Change
 
-```{r gross_net_change, fig.height=3.5}
-# Visualize gross vs net change
+```{r gross_net_change_93, echo=FALSE, fig.height=5}
 transitions <- data.frame(
   Status = c("Poor→Poor", "Poor→Not", "Not→Poor", "Not→Not"),
   Count = c(15, 10, 5, 70)
 )
 
-# Net change: 10-5 = 5 fewer poor
-# Gross change: 10+5 = 15 transitions
-
 ggplot(transitions, aes(x = Status, y = Count)) +
-  geom_bar(stat = "identity", fill = c("red", "green", "orange", "blue")) +
-  theme_minimal() +
+  geom_bar(stat = "identity", 
+           fill = c("red", "green", "orange", "blue")) +
   labs(title = "Gross Change Exceeds Net Change",
-       subtitle = "Net: 5% reduction | Gross: 15% transitions")
+       subtitle = "Net: 5% reduction | Gross: 15% transitions") +
+  theme(text = element_text(size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 **Bottom line:** Much more movement than net suggests
@@ -1674,8 +1096,7 @@ ggplot(transitions, aes(x = Status, y = Count)) +
 
 ## Variance of Change
 
-```{r variance_change}
-# Variance of change estimates
+```{r variance_change_94, echo=FALSE}
 cat("Var(Change) = Var(Y₂) + Var(Y₁) - 2×Cov(Y₂,Y₁)
 
 Key insight: Correlation reduces variance
@@ -1696,8 +1117,7 @@ Strong correlation → Precise change estimates")
 
 ## Estimating Transitions
 
-```{r transition_matrix}
-# Transition probability matrix
+```{r transition_matrix_95, echo=FALSE}
 trans_matrix <- matrix(
   c(0.85, 0.10, 0.05,
     0.15, 0.70, 0.15,
@@ -1709,7 +1129,7 @@ rownames(trans_matrix) <- colnames(trans_matrix) <-
   c("Employed", "Unemployed", "Inactive")
 
 kable(trans_matrix, caption = "Quarterly Transition Probabilities") %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Shows labor market dynamics
@@ -1718,8 +1138,7 @@ kable(trans_matrix, caption = "Quarterly Transition Probabilities") %>%
 
 ## Split Panel Design
 
-```{r split_panel}
-# Part rotating, part continuous
+```{r split_panel_96, echo=FALSE}
 split_design <- data.frame(
   Component = c("Continuous", "Rotating"),
   Proportion = c("40%", "60%"),
@@ -1729,7 +1148,7 @@ split_design <- data.frame(
 )
 
 kable(split_design) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Balances competing needs
@@ -1756,7 +1175,7 @@ Share: "One thing about panels I learned..."
 
 ### Adjusting to known totals:
 
-```{r calibration_overview}
+```{r calibration_overview_98, echo=FALSE}
 calibration_steps <- data.frame(
   Step = 1:4,
   Process = c("Initial weights", "Identify benchmarks", 
@@ -1768,7 +1187,7 @@ calibration_steps <- data.frame(
 )
 
 kable(calibration_steps) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Improve representativeness
@@ -1777,8 +1196,7 @@ kable(calibration_steps) %>%
 
 ## Calibration Variables
 
-```{r calibration_vars}
-# Common calibration variables
+```{r calibration_vars_99, echo=FALSE}
 calib_vars <- data.frame(
   Variable = c("Age-sex", "Geography", "Education", "Household size"),
   Source = c("Census", "Admin records", "Census", "Census"),
@@ -1787,7 +1205,7 @@ calib_vars <- data.frame(
 )
 
 kable(calib_vars) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Use reliable, correlated variables
@@ -1796,8 +1214,7 @@ kable(calib_vars) %>%
 
 ## Raking Process
 
-```{r raking_process}
-# Iterative proportional fitting
+```{r raking_process_100, echo=FALSE}
 cat("Raking Algorithm:
 
 Iteration 1:
@@ -1819,17 +1236,7 @@ Continue until convergence (usually 3-5 iterations)")
 
 ## Raking Example
 
-```{r raking_example}
-# Simple raking demonstration
-initial <- data.frame(
-  Age = c("Young", "Young", "Old", "Old"),
-  Sex = c("M", "F", "M", "F"),
-  Weight = c(100, 100, 100, 100),
-  Target_Age = c(200, 200, 300, 300),
-  Target_Sex = c(450, 450, 550, 550)
-)
-
-# After raking
+```{r raking_example_101, echo=FALSE}
 final <- data.frame(
   Age = c("Young", "Young", "Old", "Old"),
   Sex = c("M", "F", "M", "F"),
@@ -1838,7 +1245,7 @@ final <- data.frame(
 )
 
 kable(final) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 14)
 ```
 
 **Bottom line:** Weights adjusted to match margins
@@ -1849,7 +1256,7 @@ kable(final) %>%
 
 ### Generalized Regression Estimator:
 
-```{r greg_calibration}
+```{r greg_calibration_102, echo=FALSE}
 cat("GREG uses regression to calibrate:
 
 1. Model: Y = X'β + ε
@@ -1871,8 +1278,7 @@ More efficient than raking")
 
 ## Calibration Constraints
 
-```{r calibration_constraints}
-# Bounding calibration adjustments
+```{r calibration_constraints_103, echo=FALSE}
 constraints <- data.frame(
   Method = c("Unbounded", "Linear", "Logit", "Truncated"),
   Range = c("(-∞, ∞)", "Positive", "[L, U]", "Bounded ratio"),
@@ -1881,7 +1287,7 @@ constraints <- data.frame(
 )
 
 kable(constraints) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Balance exactness vs reasonable weights
@@ -1890,8 +1296,7 @@ kable(constraints) %>%
 
 ## Weight Trimming Impact
 
-```{r weight_trimming, fig.height=3.5}
-# Effect of trimming on distribution
+```{r weight_trimming_104, echo=FALSE, fig.height=5}
 set.seed(2024)
 weights <- c(rlnorm(95, log(100), 0.5), 500, 800, 1000)
 trimmed <- pmin(weights, quantile(weights, 0.95))
@@ -1902,8 +1307,9 @@ data.frame(
 ) %>%
   ggplot(aes(x = Weight, fill = Type)) +
   geom_histogram(alpha = 0.6, bins = 30, position = "identity") +
-  theme_minimal() +
-  labs(title = "Weight Distribution: Before and After Trimming")
+  scale_fill_brewer(palette = "Set1") +
+  labs(title = "Weight Distribution: Before and After Trimming") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Reduces extreme weights
@@ -1912,8 +1318,7 @@ data.frame(
 
 ## Multi-Phase Calibration
 
-```{r multiphase_calibration}
-# Calibrate at each phase
+```{r multiphase_calibration_105, echo=FALSE}
 phase_calib <- data.frame(
   Phase = c("Phase 1", "Phase 2", "Combined"),
   Calibration = c("To population totals", "To Phase 1 estimates",
@@ -1923,7 +1328,7 @@ phase_calib <- data.frame(
 )
 
 kable(phase_calib) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Each phase needs calibration
@@ -1932,7 +1337,7 @@ kable(phase_calib) %>%
 
 ## Panel Calibration
 
-```{r panel_calibration}
+```{r panel_calibration_106, echo=FALSE}
 cat("Panel Calibration Challenges:
 
 1. Cross-sectional consistency
@@ -1955,8 +1360,7 @@ cat("Panel Calibration Challenges:
 
 ### Combining panel and cross-section:
 
-```{r composite_estimation}
-# AK composite estimator
+```{r composite_estimation_107, echo=FALSE}
 cat("Composite Estimator:
 
 Y_composite = A × Y_continuing + K × Y_new
@@ -1978,7 +1382,7 @@ Optimal A depends on:
 
 ## Optimal Composite Weights
 
-```{r optimal_composite}
+```{r optimal_composite_108, echo=TRUE}
 # Calculate optimal A and K
 rho <- 0.7  # Correlation between waves
 n_cont <- 600  # Continuing sample
@@ -2000,7 +1404,7 @@ c(Correlation = rho,
 
 ## Software for Panels
 
-```{r panel_software}
+```{r panel_software_109, echo=TRUE}
 cat("R packages for panel surveys:
 
 library(survey)    # Basic analysis
@@ -2026,7 +1430,7 @@ svycontrast(svymean(~income_w2 - income_w1, panel_design))")
 
 ## Common Panel Errors
 
-```{r panel_errors}
+```{r panel_errors_110, echo=FALSE}
 errors <- data.frame(
   Error = c("Ignoring attrition", "Wrong weights", 
            "Not testing conditioning", "Poor tracking"),
@@ -2037,7 +1441,7 @@ errors <- data.frame(
 )
 
 kable(errors) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Panels need extra care
@@ -2046,15 +1450,14 @@ kable(errors) %>%
 
 ## Case Study: Labour Force
 
-```{r lfs_case}
-# Rotating panel for employment
+```{r lfs_case_111, echo=FALSE}
 lfs_design <- data.frame(
   Feature = c("Rotation", "Overlap", "Frequency", "Sample", "Purpose"),
   Detail = c("2-(2)-2", "50%", "Monthly", "60,000 HH", "Employment trends")
 )
 
 kable(lfs_design) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Standard for labor statistics
@@ -2063,25 +1466,25 @@ kable(lfs_design) %>%
 
 ## LFS Rotation Pattern
 
-```{r lfs_rotation, fig.height=3.5}
+```{r lfs_rotation_112, echo=FALSE, fig.height=5}
 # 2-(2)-2 rotation pattern
-lfs_pattern <- matrix(0, nrow = 8, ncol = 8)
-for(i in 1:8) {
-  if(i <= 2) lfs_pattern[i, i:(i+1)] <- 1
-  if(i >= 3 & i <= 4) lfs_pattern[i, c(i, i+3)] <- 1
-  if(i >= 5 & i <= 6) lfs_pattern[i, i:(i+1)] <- 1
-}
+lfs_pattern <- matrix(0, nrow = 4, ncol = 8)
+lfs_pattern[1, c(1,2,5,6)] <- 1
+lfs_pattern[2, c(2,3,6,7)] <- 1
+lfs_pattern[3, c(3,4,7,8)] <- 1
+lfs_pattern[4, c(1,4,5,8)] <- 1
 
-# Visualize
-as.data.frame(lfs_pattern[1:4, 1:8]) %>%
+as.data.frame(lfs_pattern) %>%
   mutate(Panel = 1:4) %>%
   pivot_longer(-Panel, names_to = "Month", values_to = "InSample") %>%
   mutate(Month = as.numeric(gsub("V", "", Month))) %>%
   ggplot(aes(x = Month, y = Panel, fill = factor(InSample))) +
-  geom_tile(color = "white") +
+  geom_tile(color = "white", size = 1) +
   scale_fill_manual(values = c("white", "darkgreen")) +
-  theme_minimal() +
-  labs(title = "2-(2)-2 Rotation Pattern", x = "Month")
+  scale_x_continuous(breaks = 1:8) +
+  scale_y_continuous(breaks = 1:4) +
+  labs(title = "2-(2)-2 Rotation Pattern", x = "Month") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** In 2 months, out 2, in 2 again
@@ -2110,19 +1513,19 @@ Calculate:
 
 ## Exercise Solution
 
-```{r panel_exercise_solution}
-# Panel design solution
+```{r panel_exercise_solution_114, echo=FALSE}
 solution <- data.frame(
   Wave = 1:5,
   Year = 2024:2028,
   Initial = c(1500, 1350, 1215, 1094, 985),
   Target = c(1500, 1350, 1215, 1094, 1000),
   Attrition = c("0%", "10%", "10%", "10%", "10%"),
-  Retention = c("Baseline", "Incentive+", "Track well", "Flexibility", "Bonus")
+  Retention = c("Baseline", "Incentive+", "Track well", 
+                "Flexibility", "Bonus")
 )
 
 kable(solution) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** 10% annual attrition manageable
@@ -2172,7 +1575,7 @@ One key insight per table!
 
 ## Key Messages
 
-```{r key_messages}
+```{r key_messages_118, echo=FALSE}
 messages <- data.frame(
   Number = 1:5,
   Message = c("Panels measure gross change, not just net",
@@ -2183,7 +1586,7 @@ messages <- data.frame(
 )
 
 kable(messages) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Panels reveal dynamics
@@ -2248,7 +1651,7 @@ Topics for next 75 slides:
 
 ## Traditional vs Responsive
 
-```{r traditional_responsive}
+```{r traditional_responsive_152, echo=FALSE}
 comparison <- data.frame(
   Aspect = c("Design", "Data collection", "Interventions", 
             "Quality", "Cost"),
@@ -2259,7 +1662,7 @@ comparison <- data.frame(
 )
 
 kable(comparison) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** From static to dynamic
@@ -2282,8 +1685,7 @@ kable(comparison) %>%
 
 ## Key Indicators to Monitor
 
-```{r key_indicators, fig.height=3.5}
-# Dashboard indicators
+```{r key_indicators_154, echo=FALSE, fig.height=5}
 indicators <- data.frame(
   Indicator = c("Response Rate", "Cost per Complete", "Contact Rate",
                "Refusal Rate", "Data Quality", "Sample Balance"),
@@ -2297,8 +1699,9 @@ indicators %>%
   pivot_longer(c(Current, Target), names_to = "Type", values_to = "Value") %>%
   ggplot(aes(x = Indicator, y = Value, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12)) +
   labs(title = "Real-Time Quality Dashboard")
 ```
 
@@ -2308,8 +1711,7 @@ indicators %>%
 
 ## Response Rate Monitoring
 
-```{r response_monitoring, fig.height=3.5}
-# Daily response rates by stratum
+```{r response_monitoring_155, echo=FALSE, fig.height=5}
 set.seed(2024)
 days <- 1:20
 urban_rr <- 70 + cumsum(rnorm(20, -0.5, 1))
@@ -2321,11 +1723,12 @@ data.frame(
   Stratum = rep(c("Urban", "Rural"), each = 20)
 ) %>%
   ggplot(aes(x = Day, y = Response_Rate, color = Stratum)) +
-  geom_line(size = 1.2) +
-  geom_hline(yintercept = 70, linetype = "dashed") +
-  theme_minimal() +
+  geom_line(size = 1.5) +
+  geom_hline(yintercept = 70, linetype = "dashed", color = "red") +
+  scale_color_brewer(palette = "Set1") +
   labs(y = "Response Rate (%)",
-       title = "Response Rate Trends")
+       title = "Response Rate Trends") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Urban needs intervention
@@ -2334,8 +1737,7 @@ data.frame(
 
 ## Cost Accumulation
 
-```{r cost_accumulation, fig.height=3.5}
-# Cumulative cost monitoring
+```{r cost_accumulation_156, echo=FALSE, fig.height=5}
 days <- 1:30
 planned_cost <- seq(0, 100000, length.out = 30)
 actual_cost <- cumsum(c(3000, rnorm(29, 3333, 500)))
@@ -2347,10 +1749,11 @@ data.frame(
 ) %>%
   pivot_longer(-Day, names_to = "Type", values_to = "Cost") %>%
   ggplot(aes(x = Day, y = Cost/1000, color = Type)) +
-  geom_line(size = 1.2) +
-  theme_minimal() +
+  geom_line(size = 1.5) +
+  scale_color_brewer(palette = "Set2") +
   labs(y = "Cost ($1000s)",
-       title = "Budget Tracking")
+       title = "Budget Tracking") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Slightly over budget
@@ -2359,8 +1762,7 @@ data.frame(
 
 ## Sample Composition
 
-```{r sample_composition}
-# Monitor representativeness
+```{r sample_composition_157, echo=FALSE}
 target_demo <- data.frame(
   Group = c("Male 18-34", "Male 35-54", "Male 55+",
            "Female 18-34", "Female 35-54", "Female 55+"),
@@ -2371,7 +1773,7 @@ target_demo <- data.frame(
 target_demo$Difference <- target_demo$Current - target_demo$Target
 
 kable(target_demo) %>%
-  kable_styling(font_size = 10) %>%
+  kable_styling(font_size = 11) %>%
   column_spec(4, color = ifelse(abs(target_demo$Difference) > 2, "red", "black"))
 ```
 
@@ -2381,7 +1783,7 @@ kable(target_demo) %>%
 
 ## Phase Capacity
 
-```{r phase_capacity}
+```{r phase_capacity_158, echo=FALSE}
 cat("Phase Capacity Management:
 
 Phase 1 (Weeks 1-2): Easy cases
@@ -2406,7 +1808,7 @@ Phase 3 (Week 5): Hard cases
 
 ## Intervention Triggers
 
-```{r intervention_triggers}
+```{r intervention_triggers_159, echo=FALSE}
 triggers <- data.frame(
   Indicator = c("Response < 60%", "Cost > 120%", "Refusal > 20%",
                "Balance index < 0.8"),
@@ -2418,7 +1820,7 @@ triggers <- data.frame(
 )
 
 kable(triggers) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Pre-planned responses
@@ -2427,7 +1829,7 @@ kable(triggers) %>%
 
 ## Adaptive Interventions
 
-```{r adaptive_interventions}
+```{r adaptive_interventions_160, echo=FALSE}
 interventions <- data.frame(
   Problem = c("Low response", "High cost", "Poor quality", "Attrition"),
   Intervention = c("Incentive increase", "Mode switch", 
@@ -2437,7 +1839,7 @@ interventions <- data.frame(
 )
 
 kable(interventions) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Data-driven adjustments
@@ -2446,8 +1848,7 @@ kable(interventions) %>%
 
 ## Incentive Experiments
 
-```{r incentive_experiment, fig.height=3.5}
-# Test different incentive levels
+```{r incentive_experiment_161, echo=FALSE, fig.height=5}
 incentives <- c(0, 10, 20, 30, 50)
 response_rates <- c(45, 55, 62, 66, 68)
 cost_per_complete <- c(80, 85, 92, 100, 115)
@@ -2458,15 +1859,17 @@ data.frame(
   Cost = cost_per_complete
 ) %>%
   ggplot(aes(x = Incentive)) +
-  geom_line(aes(y = Response_Rate), color = "blue", size = 1.2) +
-  geom_line(aes(y = Cost), color = "red", size = 1.2) +
+  geom_line(aes(y = Response_Rate), color = "blue", size = 1.5) +
+  geom_line(aes(y = Cost), color = "red", size = 1.5) +
+  geom_point(aes(y = Response_Rate), color = "blue", size = 3) +
+  geom_point(aes(y = Cost), color = "red", size = 3) +
   scale_y_continuous(
     name = "Response Rate (%)",
     sec.axis = sec_axis(~., name = "Cost per Complete ($)")
   ) +
-  theme_minimal() +
   labs(x = "Incentive ($)",
-       title = "Incentive Optimization")
+       title = "Incentive Optimization") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** $20 optimal balance
@@ -2475,8 +1878,7 @@ data.frame(
 
 ## Mode Switching
 
-```{r mode_switching}
-# Adaptive mode selection
+```{r mode_switching_162, echo=FALSE}
 mode_sequence <- data.frame(
   Attempt = 1:5,
   Mode = c("Web", "Email reminder", "Phone", "SMS", "F2F"),
@@ -2486,7 +1888,7 @@ mode_sequence <- data.frame(
 )
 
 kable(mode_sequence) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Escalate mode by propensity
@@ -2495,63 +1897,28 @@ kable(mode_sequence) %>%
 
 ## Contact Attempts Optimization
 
-```{r contact_optimization, fig.height=3.5}
-#| label: contact_optimization
-#| fig-height: 3.5
-#| fig-width: 7
-#| fig-cap: "This plot shows the relationship between the number of contact attempts, the cumulative probability of making contact, and the cost-efficiency of those attempts. The green line shows that the probability of contact approaches 1 but with diminishing returns. The purple line shows that efficiency peaks early and then declines."
-
-# Load the necessary library
-library(ggplot2)
-
-#--- Data Preparation ---#
-# Create a sequence for the number of attempts
+```{r contact_optimization_163, echo=FALSE, fig.height=5}
 attempts <- 1:10
-
-# Calculate the cumulative probability of contact
-# Assumes a 30% chance of contact on any given attempt (1 - 0.7)
 prob_contact <- 1 - (0.7)^attempts
-
-# Calculate the cost, assuming each attempt costs 10 units
 cost <- attempts * 10
-
-# Calculate efficiency as the probability gained per unit of cost
 efficiency <- prob_contact / cost
 
-# Combine into a data frame for plotting
-plot_data <- data.frame(
+data.frame(
   Attempts = attempts,
   Contact_Prob = prob_contact,
-  Efficiency = efficiency
-)
-
-#--- Plotting ---#
-ggplot(plot_data, aes(x = Attempts)) +
-  # Line for contact probability (plotted on the primary y-axis)
-  geom_line(aes(y = Contact_Prob, color = "Contact Probability"), linewidth = 1.2) +
-  # Line for efficiency. We multiply by 10 to scale it for visibility against the primary axis.
-  geom_line(aes(y = Efficiency * 10, color = "Efficiency"), linewidth = 1.2) +
+  Efficiency = efficiency * 10
+) %>%
+  ggplot(aes(x = Attempts)) +
+  geom_line(aes(y = Contact_Prob), color = "green", size = 1.5) +
+  geom_line(aes(y = Efficiency), color = "purple", size = 1.5) +
+  geom_point(aes(y = Contact_Prob), color = "green", size = 3) +
+  geom_point(aes(y = Efficiency), color = "purple", size = 3) +
   scale_y_continuous(
-    # Primary y-axis settings
     name = "Contact Probability",
-    limits = c(0, 1),
-    # Secondary y-axis settings
-    # The transformation must be the inverse of the one used in geom_line.
-    # Since we plotted Efficiency * 10, the axis transformation is ~ . / 10.
-    sec.axis = sec_axis(trans = ~ . / 10, name = "Efficiency (Prob/Cost Unit)")
+    sec.axis = sec_axis(~./10, name = "Efficiency")
   ) +
-  scale_color_manual(
-    name = "Metric",
-    values = c("Contact Probability" = "seagreen", "Efficiency" = "darkorchid")
-  ) +
-  theme_minimal(base_size = 14) +
-  labs(
-    title = "Optimizing Contact Attempts for Probability and Efficiency",
-    subtitle = "Efficiency peaks at 2 attempts before declining.",
-    x = "Number of Contact Attempts",
-    y = "Contact Probability"
-  ) +
-  theme(legend.position = "top")
+  labs(title = "Optimizing Contact Attempts") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Stop at 4-5 attempts
@@ -2560,7 +1927,7 @@ ggplot(plot_data, aes(x = Attempts)) +
 
 ## Propensity Modeling
 
-```{r propensity_modeling}
+```{r propensity_modeling_164, echo=FALSE}
 cat("Response Propensity Model:
 
 logit(P(Response)) = β₀ + β₁Age + β₂Urban + β₃Prior + β₄Income
@@ -2580,8 +1947,7 @@ Update model during collection!")
 
 ## Propensity Score Groups
 
-```{r propensity_groups}
-# Stratify by propensity
+```{r propensity_groups_165, echo=FALSE}
 prop_groups <- data.frame(
   Group = c("High", "Medium-High", "Medium-Low", "Low"),
   Propensity = c("0.8-1.0", "0.6-0.8", "0.4-0.6", "0.0-0.4"),
@@ -2591,7 +1957,7 @@ prop_groups <- data.frame(
 )
 
 kable(prop_groups) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Tailor to propensity
@@ -2615,8 +1981,7 @@ Think first!
 
 ## Sample Balance Indicators
 
-```{r balance_indicators}
-# R-indicators and balance
+```{r balance_indicators_167, echo=FALSE}
 cat("Sample Balance Measures:
 
 1. R-indicator (Representativeness)
@@ -2637,20 +2002,20 @@ cat("Sample Balance Measures:
 
 ## R-Indicator Tracking
 
-```{r r_indicator, fig.height=3.5}
-# R-indicator over time
+```{r r_indicator_168, echo=FALSE, fig.height=5}
 days <- 1:30
 r_indicator <- 0.7 + cumsum(rnorm(30, 0.003, 0.01))
 r_indicator <- pmin(pmax(r_indicator, 0.6), 0.85)
 
 data.frame(Day = days, R_Indicator = r_indicator) %>%
   ggplot(aes(x = Day, y = R_Indicator)) +
-  geom_line(size = 1.2, color = "darkblue") +
+  geom_line(size = 1.5, color = "darkblue") +
   geom_hline(yintercept = 0.8, linetype = "dashed", color = "green") +
   geom_hline(yintercept = 0.7, linetype = "dashed", color = "red") +
-  theme_minimal() +
+  scale_y_continuous(limits = c(0.5, 0.9)) +
   labs(y = "R-Indicator",
-       title = "Sample Representativeness Over Time")
+       title = "Sample Representativeness Over Time") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Maintain above 0.7
@@ -2659,8 +2024,7 @@ data.frame(Day = days, R_Indicator = r_indicator) %>%
 
 ## Stopping Rules
 
-```{r stopping_rules}
-# When to stop data collection
+```{r stopping_rules_169, echo=FALSE}
 stopping_rules <- data.frame(
   Rule = c("Target n reached", "Budget exhausted", "Time limit",
           "Quality threshold", "Diminishing returns"),
@@ -2672,7 +2036,7 @@ stopping_rules <- data.frame(
 )
 
 kable(stopping_rules) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** Multiple stopping criteria
@@ -2681,8 +2045,7 @@ kable(stopping_rules) %>%
 
 ## Quality vs Quantity
 
-```{r quality_quantity, fig.height=3.5}
-# Trade-off visualization
+```{r quality_quantity_170, echo=FALSE, fig.height=5}
 sample_sizes <- seq(1000, 3000, 100)
 quality <- 95 - 10 * log(sample_sizes/1000)
 cost <- sample_sizes * 50
@@ -2693,15 +2056,15 @@ data.frame(
   Cost = cost/1000
 ) %>%
   ggplot(aes(x = Size)) +
-  geom_line(aes(y = Quality), color = "blue", size = 1.2) +
-  geom_line(aes(y = Cost/2), color = "red", size = 1.2) +
+  geom_line(aes(y = Quality), color = "blue", size = 1.5) +
+  geom_line(aes(y = Cost/2), color = "red", size = 1.5) +
   scale_y_continuous(
     name = "Quality Score",
     sec.axis = sec_axis(~.*2, name = "Cost ($1000s)")
   ) +
-  theme_minimal() +
   labs(x = "Sample Size",
-       title = "Quality-Quantity Trade-off")
+       title = "Quality-Quantity Trade-off") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Optimal around n=2000
@@ -2710,8 +2073,7 @@ data.frame(
 
 ## Paradata Collection
 
-```{r paradata}
-# Process data to collect
+```{r paradata_171, echo=FALSE}
 paradata_types <- data.frame(
   Type = c("Call records", "Timestamps", "Interviewer", 
           "Device", "GPS", "Audio"),
@@ -2724,7 +2086,7 @@ paradata_types <- data.frame(
 )
 
 kable(paradata_types) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Process data valuable
@@ -2733,8 +2095,7 @@ kable(paradata_types) %>%
 
 ## Interviewer Monitoring
 
-```{r interviewer_monitoring, fig.height=3.5}
-# Performance by interviewer
+```{r interviewer_monitoring_172, echo=FALSE, fig.height=5}
 set.seed(2024)
 interviewers <- data.frame(
   ID = 1:20,
@@ -2746,9 +2107,9 @@ interviewers$Productivity <- interviewers$Completes / interviewers$Hours
 ggplot(interviewers, aes(x = Hours, y = Completes)) +
   geom_point(size = 3, color = "darkblue") +
   geom_smooth(method = "lm", se = FALSE, color = "red") +
-  theme_minimal() +
   labs(title = "Interviewer Productivity",
-       subtitle = "Identify outliers for investigation")
+       subtitle = "Identify outliers for investigation") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Monitor individual performance
@@ -2771,7 +2132,7 @@ Ready for more?
 
 ## Real-Time Dashboards
 
-```{r dashboard_mockup}
+```{r dashboard_mockup_174, echo=FALSE}
 cat("Dashboard Components:
 
 ╔══════════════════════════════════════╗
@@ -2794,8 +2155,7 @@ cat("Dashboard Components:
 
 ## Adaptive Allocation
 
-```{r adaptive_allocation}
-# Shift resources during collection
+```{r adaptive_allocation_175, echo=FALSE}
 reallocation <- data.frame(
   Week = c("Week 1", "Week 2", "Week 3"),
   Urban = c(50, 45, 60),
@@ -2805,7 +2165,7 @@ reallocation <- data.frame(
 )
 
 kable(reallocation) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Move resources to problems
@@ -2814,7 +2174,7 @@ kable(reallocation) %>%
 
 ## Machine Learning Applications
 
-```{r ml_applications}
+```{r ml_applications_176, echo=FALSE}
 ml_uses <- data.frame(
   Application = c("Response propensity", "Optimal contact time",
                  "Best mode prediction", "Quality scoring"),
@@ -2825,7 +2185,7 @@ ml_uses <- data.frame(
 )
 
 kable(ml_uses) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** AI enhances decisions
@@ -2834,8 +2194,7 @@ kable(ml_uses) %>%
 
 ## Predictive Models
 
-```{r predictive_models, fig.height=3.5}
-# Predict final response rate
+```{r predictive_models_177, echo=FALSE, fig.height=5}
 days_elapsed <- 1:20
 current_rr <- c(seq(10, 50, length.out = 10), rep(NA, 10))
 predicted_rr <- 65 * (1 - exp(-0.15 * days_elapsed))
@@ -2847,11 +2206,12 @@ data.frame(
 ) %>%
   pivot_longer(-Day, names_to = "Type", values_to = "Rate") %>%
   ggplot(aes(x = Day, y = Rate, color = Type)) +
-  geom_line(size = 1.2) +
-  geom_point(data = . %>% filter(!is.na(Rate))) +
-  theme_minimal() +
+  geom_line(size = 1.5, na.rm = TRUE) +
+  geom_point(data = . %>% filter(!is.na(Rate)), size = 3) +
+  scale_color_brewer(palette = "Set1") +
   labs(y = "Response Rate (%)",
-       title = "Predicting Final Response Rate")
+       title = "Predicting Final Response Rate") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Early prediction guides decisions
@@ -2860,7 +2220,7 @@ data.frame(
 
 ## Cost Optimization Algorithm
 
-```{r cost_optimization}
+```{r cost_optimization_178, echo=FALSE}
 cat("Dynamic Cost Optimization:
 
 While (budget_remaining > 0) {
@@ -2887,8 +2247,7 @@ Result: Maximum responses within budget")
 
 ## Multi-Armed Bandit
 
-```{r multi_armed_bandit}
-# Explore vs exploit for interventions
+```{r multi_armed_bandit_179, echo=FALSE}
 bandit_results <- data.frame(
   Intervention = c("$10 incentive", "$20 incentive", "Extra call",
                   "SMS reminder", "Email follow-up"),
@@ -2899,7 +2258,7 @@ bandit_results <- data.frame(
 )
 
 kable(bandit_results) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Learn and adapt
@@ -2908,8 +2267,7 @@ kable(bandit_results) %>%
 
 ## Case Study: Responsive LFS
 
-```{r lfs_responsive}
-# Labour Force Survey responsive design
+```{r lfs_responsive_180, echo=FALSE}
 lfs_responsive <- data.frame(
   Phase = c("Week 1", "Week 2", "Week 3", "Week 4"),
   Strategy = c("Easy cases", "Standard effort", "Enhanced", "Maximum"),
@@ -2919,7 +2277,7 @@ lfs_responsive <- data.frame(
 )
 
 kable(lfs_responsive) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Phased approach works
@@ -2928,8 +2286,7 @@ kable(lfs_responsive) %>%
 
 ## Results from Responsive Design
 
-```{r responsive_results, fig.height=3.5}
-# Compare traditional vs responsive
+```{r responsive_results_181, echo=FALSE, fig.height=5}
 results <- data.frame(
   Metric = c("Response Rate", "Cost per Complete", "R-Indicator",
             "Time to Complete"),
@@ -2941,8 +2298,9 @@ results %>%
   pivot_longer(-Metric, names_to = "Design", values_to = "Value") %>%
   ggplot(aes(x = Metric, y = Value, fill = Design)) +
   geom_bar(stat = "identity", position = "dodge") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 12)) +
   labs(title = "Responsive Design Improvements")
 ```
 
@@ -2952,7 +2310,7 @@ results %>%
 
 ## Implementation Challenges
 
-```{r implementation_challenges}
+```{r implementation_challenges_182, echo=FALSE}
 challenges <- data.frame(
   Challenge = c("IT infrastructure", "Staff training", "Real-time decisions",
                "Change management"),
@@ -2963,7 +2321,7 @@ challenges <- data.frame(
 )
 
 kable(challenges) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Requires infrastructure
@@ -2972,7 +2330,7 @@ kable(challenges) %>%
 
 ## Training Requirements
 
-```{r training_requirements}
+```{r training_requirements_183, echo=FALSE}
 cat("Staff Training for Responsive Design:
 
 1. Field Supervisors
@@ -3002,7 +2360,7 @@ cat("Staff Training for Responsive Design:
 
 ## Software Tools
 
-```{r software_tools}
+```{r software_tools_184, echo=FALSE}
 tools <- data.frame(
   Tool = c("R Shiny", "Tableau", "SurveyMonkey API", "Blaise", "Custom"),
   Purpose = c("Dashboards", "Visualization", "Data collection",
@@ -3012,7 +2370,7 @@ tools <- data.frame(
 )
 
 kable(tools) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Mix of tools needed
@@ -3021,13 +2379,11 @@ kable(tools) %>%
 
 ## R Implementation
 
-```{r r_implementation}
-cat("# R code for responsive monitoring
-
+```{r r_implementation_185, echo=TRUE}
+# R code for responsive monitoring
 library(shiny)
-library(survey)
 
-# Real-time dashboard
+# Real-time dashboard server function
 server <- function(input, output) {
   
   # Update every 5 minutes
@@ -3046,7 +2402,7 @@ server <- function(input, output) {
   output$recommendations <- renderText({
     generate_actions(current_data())
   })
-}")
+}
 ```
 
 **Bottom line:** R enables responsive design
@@ -3055,8 +2411,7 @@ server <- function(input, output) {
 
 ## Quality Control Integration
 
-```{r quality_control}
-# Real-time quality checks
+```{r quality_control_186, echo=FALSE}
 quality_checks <- data.frame(
   Check = c("Interview length", "Missing data", "Straightlining",
            "GPS verification"),
@@ -3066,7 +2421,7 @@ quality_checks <- data.frame(
 )
 
 kable(quality_checks) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Quality monitored continuously
@@ -3075,7 +2430,7 @@ kable(quality_checks) %>%
 
 ## Communication Protocols
 
-```{r communication}
+```{r communication_187, echo=FALSE}
 protocols <- data.frame(
   Level = c("Daily", "Weekly", "Exception", "Emergency"),
   Audience = c("Field team", "Management", "Director", "All"),
@@ -3085,7 +2440,7 @@ protocols <- data.frame(
 )
 
 kable(protocols) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Structured communication
@@ -3114,7 +2469,7 @@ Include:
 
 ## Exercise Solution
 
-```{r exercise_responsive}
+```{r exercise_responsive_189, echo=FALSE}
 solution <- data.frame(
   Week = 1:6,
   Phase = c("Launch", "Standard", "Enhanced", "Enhanced", "Maximum", "Close"),
@@ -3126,7 +2481,7 @@ solution <- data.frame(
 )
 
 kable(solution) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** Structured escalation
@@ -3149,7 +2504,7 @@ Report one key point!
 
 ## Innovation Spotlight
 
-```{r innovation_spotlight}
+```{r innovation_spotlight_191, echo=FALSE}
 innovations <- data.frame(
   Innovation = c("SMS micro-surveys", "Passive data", "Blockchain incentives",
                 "AI interviewer"),
@@ -3159,7 +2514,7 @@ innovations <- data.frame(
 )
 
 kable(innovations) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** Future is arriving
@@ -3168,8 +2523,7 @@ kable(innovations) %>%
 
 ## Cost-Benefit Analysis
 
-```{r cost_benefit, fig.height=3.5}
-# ROI of responsive design
+```{r cost_benefit_192, echo=FALSE, fig.height=5}
 costs <- c(0, 50000, 75000, 100000)  # Investment
 benefits <- c(0, 30000, 80000, 140000)  # Savings + quality
 
@@ -3178,13 +2532,13 @@ data.frame(
   Net_Benefit = (benefits - costs)/1000
 ) %>%
   ggplot(aes(x = Investment, y = Net_Benefit)) +
-  geom_line(size = 1.5, color = "darkgreen") +
-  geom_point(size = 3) +
+  geom_line(size = 2, color = "darkgreen") +
+  geom_point(size = 4) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  theme_minimal() +
   labs(x = "Investment ($1000s)",
        y = "Net Benefit ($1000s)",
-       title = "ROI of Responsive Design")
+       title = "ROI of Responsive Design") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Break-even at $50K investment
@@ -3193,7 +2547,7 @@ data.frame(
 
 ## Lessons Learned
 
-```{r lessons_learned}
+```{r lessons_learned_193, echo=FALSE}
 lessons <- data.frame(
   Number = 1:5,
   Lesson = c("Start simple, expand gradually",
@@ -3204,10 +2558,168 @@ lessons <- data.frame(
 )
 
 kable(lessons) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Practical wisdom
+
+---
+
+## Real-Time Quality Metrics
+
+```{r quality_metrics_194, echo=TRUE}
+# Calculate quality metrics in real-time
+calculate_quality <- function(data) {
+  metrics <- list(
+    response_rate = mean(data$responded, na.rm = TRUE),
+    item_missing = mean(is.na(data$key_variable)),
+    r_indicator = 1 - 2 * sd(data$propensity_score),
+    cost_per_complete = sum(data$cost) / sum(data$completed)
+  )
+  
+  # Flag issues
+  metrics$alerts <- c()
+  if(metrics$response_rate < 0.6) 
+    metrics$alerts <- c(metrics$alerts, "Low response")
+  if(metrics$item_missing > 0.1) 
+    metrics$alerts <- c(metrics$alerts, "High missing")
+  
+  return(metrics)
+}
+```
+
+**Bottom line:** Automated monitoring
+
+---
+
+## Adaptive Sample Size
+
+```{r adaptive_sample_195, echo=FALSE, fig.height=5}
+# Adaptive sample size based on variance
+weeks <- 1:6
+planned_n <- rep(1000, 6)
+actual_var <- c(100, 95, 92, 88, 85, 83)
+adaptive_n <- 1000 * (100 / actual_var)
+
+data.frame(
+  Week = weeks,
+  Planned = planned_n,
+  Adaptive = adaptive_n
+) %>%
+  pivot_longer(-Week, names_to = "Type", values_to = "Sample_Size") %>%
+  ggplot(aes(x = Week, y = Sample_Size, color = Type)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(y = "Sample Size",
+       title = "Adaptive Sample Size Adjustment") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Adjust to maintain precision
+
+---
+
+## Documentation Standards
+
+```{r documentation_196, echo=FALSE}
+cat("Essential Documentation:
+
+1. Design Changes
+   - Date and time
+   - Reason for change
+   - Expected impact
+   - Actual outcome
+
+2. Interventions
+   - Trigger met
+   - Action taken
+   - Cost incurred
+   - Effect measured
+
+3. Quality Issues
+   - Problem identified
+   - Resolution attempted
+   - Success/failure
+   - Lessons learned")
+```
+
+**Bottom line:** Document everything
+
+---
+
+## Integration with Existing Systems
+
+```{r integration_197, echo=FALSE}
+integration <- data.frame(
+  System = c("CAPI/CATI", "Sample management", "Cost tracking", "Quality control"),
+  Integration = c("API feeds", "Real-time sync", "Budget alerts", "Flag issues"),
+  Frequency = c("Every interview", "Hourly", "Daily", "Continuous"),
+  Priority = c("High", "High", "Medium", "High")
+)
+
+kable(integration) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Connect all systems
+
+---
+
+## Scaling Responsive Design
+
+```{r scaling_198, echo=FALSE}
+scaling <- data.frame(
+  Stage = c("Pilot", "Small scale", "Regional", "National"),
+  Surveys = c("1", "2-5", "5-10", "All"),
+  Investment = c("$50K", "$200K", "$500K", "$1M+"),
+  ROI = c("Learning", "20%", "40%", "60%"),
+  Timeline = c("3 months", "6 months", "1 year", "2+ years")
+)
+
+kable(scaling) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Gradual expansion works
+
+---
+
+## Future Directions
+
+```{r future_directions_199, echo=FALSE}
+future <- data.frame(
+  Trend = c("AI-driven decisions", "Automated interventions", 
+           "Predictive stopping", "Real-time calibration"),
+  Current = c("Rule-based", "Manual", "Fixed rules", "Post-hoc"),
+  Future = c("Machine learning", "Autonomous", "Dynamic", "Continuous"),
+  Timeline = c("2-3 years", "3-5 years", "1-2 years", "2-3 years")
+)
+
+kable(future) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Automation increasing
+
+---
+
+## Success Metrics
+
+```{r success_metrics_200, echo=FALSE}
+success <- data.frame(
+  Metric = c("Response rate improvement", "Cost reduction", 
+            "Quality improvement", "Time reduction", "Staff satisfaction"),
+  Target = c("+5%", "-15%", "+10%", "-20%", "+20%"),
+  Typical = c("+3-7%", "-10-20%", "+5-15%", "-15-25%", "+10-30%"),
+  Best = c("+10%", "-30%", "+20%", "-40%", "+40%")
+)
+
+kable(success) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Measurable improvements
 
 ---
 
@@ -3227,7 +2739,7 @@ kable(lessons) %>%
 
 ## Key Messages
 
-```{r part3_key_messages}
+```{r part3_key_messages_202, echo=FALSE}
 messages <- data.frame(
   Point = 1:5,
   Message = c("Monitor continuously, intervene quickly",
@@ -3238,7 +2750,7 @@ messages <- data.frame(
 )
 
 kable(messages) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 13)
 ```
 
 **Bottom line:** Responsive is the future
@@ -3302,8 +2814,7 @@ Topics for next 75 slides:
 
 ## Beyond Simple Estimates
 
-```{r beyond_simple}
-# Types of complex estimates
+```{r beyond_simple_227, echo=FALSE}
 estimate_types <- data.frame(
   Type = c("Ratio", "Regression", "Quantile", "Correlation", "Model-based"),
   Example = c("Per capita income", "Income vs education", 
@@ -3314,7 +2825,7 @@ estimate_types <- data.frame(
 )
 
 kable(estimate_types) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Complex statistics need special methods
@@ -3323,8 +2834,7 @@ kable(estimate_types) %>%
 
 ## Ratio Estimation
 
-```{r ratio_estimation}
-# Ratio estimates common in surveys
+```{r ratio_estimation_228, echo=FALSE}
 cat("Ratio Estimator: R = Y̅ / X̅
 
 Examples:
@@ -3342,7 +2852,7 @@ Var(R) ≈ (1/X̅²)[Var(Y) + R²Var(X) - 2R×Cov(X,Y)]")
 
 ## Ratio Estimation Example
 
-```{r ratio_example}
+```{r ratio_example_229, echo=TRUE}
 # Calculate ratio with proper variance
 set.seed(2024)
 sample_data <- data.frame(
@@ -3366,7 +2876,7 @@ confint(ratio_est)
 
 ## Regression Coefficients
 
-```{r regression_survey}
+```{r regression_survey_230, echo=TRUE}
 # Survey-weighted regression
 model <- svyglm(income ~ household_size + I(household_size^2), 
                 design = design)
@@ -3374,7 +2884,7 @@ model <- svyglm(income ~ household_size + I(household_size^2),
 # Extract coefficients with SEs
 coef_summary <- summary(model)$coefficients[, 1:2]
 kable(round(coef_summary, 0)) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Account for design in regression
@@ -3383,7 +2893,7 @@ kable(round(coef_summary, 0)) %>%
 
 ## Domain Regression
 
-```{r domain_regression}
+```{r domain_regression_231, echo=FALSE}
 cat("Domain-specific models:
 
 # Separate models by domain
@@ -3404,13 +2914,12 @@ rural_model <- svyglm(income ~ education + age,
 
 ## Quantile Estimation
 
-```{r quantile_estimation}
+```{r quantile_estimation_232, echo=TRUE}
 # Median and other quantiles
 quantiles <- svyquantile(~income, design = design, 
                          quantiles = c(0.1, 0.25, 0.5, 0.75, 0.9))
 
-# Extract values directly - svyquantile returns a matrix-like object
-# Access the quantile values
+# Extract values
 quant_vals <- coef(quantiles)
 se_vals <- SE(quantiles)
 
@@ -3422,7 +2931,7 @@ quantile_results <- data.frame(
 )
 
 kable(quantile_results) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Distribution beyond mean
@@ -3431,8 +2940,7 @@ kable(quantile_results) %>%
 
 ## Variance Estimation Methods
 
-```{r variance_methods_advanced}
-# Compare variance estimation approaches
+```{r variance_methods_advanced_233, echo=FALSE}
 methods_comparison <- data.frame(
   Method = c("Linearization", "Jackknife", "Bootstrap", "BRR"),
   Speed = c("Fast", "Medium", "Slow", "Fast"),
@@ -3441,7 +2949,7 @@ methods_comparison <- data.frame(
 )
 
 kable(methods_comparison) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Trade-offs in methods
@@ -3450,8 +2958,7 @@ kable(methods_comparison) %>%
 
 ## Replicate Weights
 
-```{r replicate_weights}
-# Create replicate weights for variance
+```{r replicate_weights_234, echo=FALSE}
 cat("Replicate Weight Methods:
 
 1. Jackknife (JK1, JKn)
@@ -3477,15 +2984,15 @@ cat("Replicate Weight Methods:
 
 ## Creating Replicate Weights
 
-```{r create_replicates}
+```{r create_replicates_235, echo=TRUE}
 # Generate jackknife replicate weights
-# Simplified example
 n_psu <- 30
-jk_weights <- matrix(0, nrow = 1000, ncol = n_psu)
+n_units <- 1000
+jk_weights <- matrix(0, nrow = n_units, ncol = n_psu)
 
 for(i in 1:n_psu) {
   # Drop PSU i, upweight others
-  jk_weights[, i] <- ifelse(rep(1:n_psu, length.out = 1000) == i,
+  jk_weights[, i] <- ifelse(rep(1:n_psu, length.out = n_units) == i,
                             0,  # Dropped
                             n_psu/(n_psu-1))  # Upweighted
 }
@@ -3502,8 +3009,7 @@ colMeans(jk_weights)[1:5]  # Check first 5
 
 ### The challenge:
 
-```{r sae_challenge, fig.height=3.5}
-# Direct estimates unreliable for small domains
+```{r sae_challenge_236, echo=FALSE, fig.height=5}
 domain_sizes <- data.frame(
   Domain = paste("Area", 1:20),
   Sample_n = c(rep(15, 5), rep(30, 5), rep(50, 5), rep(100, 5)),
@@ -3511,11 +3017,12 @@ domain_sizes <- data.frame(
 )
 
 ggplot(domain_sizes, aes(x = Sample_n, y = Direct_CV)) +
-  geom_point(size = 3, color = "red") +
-  geom_hline(yintercept = 20, linetype = "dashed") +
-  theme_minimal() +
+  geom_point(size = 4, color = "red") +
+  geom_hline(yintercept = 20, linetype = "dashed", size = 1) +
+  scale_x_continuous(breaks = c(15, 30, 50, 100)) +
   labs(x = "Domain Sample Size", y = "CV (%)",
-       title = "Small Domains Have Poor Precision")
+       title = "Small Domains Have Poor Precision") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Need model-based methods
@@ -3524,7 +3031,7 @@ ggplot(domain_sizes, aes(x = Sample_n, y = Direct_CV)) +
 
 ## SAE Models
 
-```{r sae_models}
+```{r sae_models_237, echo=FALSE}
 models <- data.frame(
   Model = c("Fay-Herriot", "Battese-Harter-Fuller", "EBLUP", "Hierarchical Bayes"),
   Level = c("Area", "Unit", "Area/Unit", "Area/Unit"),
@@ -3533,7 +3040,7 @@ models <- data.frame(
 )
 
 kable(models) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** Different models for different situations
@@ -3542,7 +3049,7 @@ kable(models) %>%
 
 ## Fay-Herriot Model
 
-```{r fay_herriot}
+```{r fay_herriot_238, echo=FALSE}
 cat("Area-Level Model:
 
 Y_i = X_i'β + v_i + e_i
@@ -3564,8 +3071,7 @@ Borrows strength through:
 
 ## SAE Example
 
-```{r sae_example, fig.height=3.5}
-# Simulate SAE improvement
+```{r sae_example_239, echo=FALSE, fig.height=5}
 set.seed(2024)
 areas <- 1:15
 direct_est <- rnorm(15, 25, 5)
@@ -3580,10 +3086,12 @@ data.frame(
   Method = rep(c("Direct", "Model"), each = 15)
 ) %>%
   ggplot(aes(x = Area, y = Estimate, color = Method)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
-  theme_minimal() +
-  labs(title = "SAE Reduces Uncertainty")
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), 
+                width = 0.3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "SAE Reduces Uncertainty") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Model-based more stable
@@ -3592,8 +3100,7 @@ data.frame(
 
 ## Benchmarking SAE
 
-```{r benchmarking_sae}
-# Ensure consistency with direct estimates
+```{r benchmarking_sae_240, echo=FALSE}
 cat("Benchmarking Steps:
 
 1. Calculate model-based estimates
@@ -3615,14 +3122,8 @@ Example:
 
 ## Missing Data Patterns
 
-```{r missing_patterns, fig.height=3.5}
-# Visualize missing data patterns
+```{r missing_patterns_241, echo=FALSE, fig.height=5}
 set.seed(2024)
-n <- 100
-missing_data <- matrix(rbinom(n * 5, 1, 0.9), nrow = n)
-colnames(missing_data) <- c("Age", "Income", "Education", "Health", "Employment")
-
-# Create pattern summary
 patterns <- data.frame(
   Pattern = c("Complete", "Missing Income", "Missing Health", 
              "Missing Both", "Other"),
@@ -3632,9 +3133,10 @@ patterns <- data.frame(
 
 ggplot(patterns, aes(x = reorder(Pattern, -Count), y = Count)) +
   geom_bar(stat = "identity", fill = "darkblue") +
-  theme_minimal() +
   labs(x = "Pattern", y = "Frequency",
-       title = "Missing Data Patterns")
+       title = "Missing Data Patterns") +
+  theme(text = element_text(size = 14),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 **Bottom line:** Understand patterns first
@@ -3643,7 +3145,7 @@ ggplot(patterns, aes(x = reorder(Pattern, -Count), y = Count)) +
 
 ## Imputation Methods
 
-```{r imputation_methods_advanced}
+```{r imputation_methods_advanced_242, echo=FALSE}
 methods <- data.frame(
   Method = c("Mean", "Regression", "PMM", "Multiple"),
   Pros = c("Simple", "Uses relationships", "Preserves distribution", "Uncertainty"),
@@ -3652,7 +3154,7 @@ methods <- data.frame(
 )
 
 kable(methods) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Multiple imputation preferred
@@ -3661,7 +3163,7 @@ kable(methods) %>%
 
 ## Multiple Imputation Process
 
-```{r mi_process}
+```{r mi_process_243, echo=FALSE}
 cat("MI Process:
 
 1. Impute m complete datasets
@@ -3684,6 +3186,31 @@ Key: Incorporates imputation uncertainty")
 
 ---
 
+## MI Example
+
+```{r mi_example_244, echo=TRUE}
+# Multiple imputation example
+library(mice)
+
+# Create data with missing values
+set.seed(2024)
+mi_data <- data.frame(
+  income = c(rnorm(80, 50000, 10000), rep(NA, 20)),
+  age = c(sample(20:70, 90, replace = TRUE), rep(NA, 10)),
+  education = sample(5:20, 100, replace = TRUE)
+)
+
+# Perform multiple imputation
+imputed <- mice(mi_data, m = 5, method = 'pmm', printFlag = FALSE)
+
+# Show imputation summary
+print(imputed)
+```
+
+**Bottom line:** 5 complete datasets created
+
+---
+
 ## Knowledge Check #4
 
 ### Quick test:
@@ -3701,7 +3228,7 @@ Think first!
 
 ## Complex Survey Software
 
-```{r complex_software}
+```{r complex_software_246, echo=FALSE}
 cat("R Survey Ecosystem:
 
 Core packages:
@@ -3731,8 +3258,7 @@ design %>%
 
 ## Poverty and Inequality
 
-```{r poverty_inequality}
-# Complex poverty measures
+```{r poverty_inequality_247, echo=FALSE}
 poverty_measures <- data.frame(
   Measure = c("Headcount", "Gap", "Severity", "Gini", "Theil"),
   Formula = c("P0", "P1", "P2", "G", "T"),
@@ -3742,7 +3268,7 @@ poverty_measures <- data.frame(
 )
 
 kable(poverty_measures) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Beyond simple poverty rate
@@ -3751,7 +3277,7 @@ kable(poverty_measures) %>%
 
 ## Calculating Gini
 
-```{r gini_calculation}
+```{r gini_calculation_248, echo=TRUE}
 # Gini coefficient with complex design
 library(convey)
 
@@ -3774,7 +3300,7 @@ c(Gini = round(coef(gini), 3),
 
 ## Decomposition Analysis
 
-```{r decomposition}
+```{r decomposition_249, echo=FALSE}
 cat("Decomposing Inequality:
 
 # Between vs Within group inequality
@@ -3811,8 +3337,7 @@ Share: "Most interesting advanced method..."
 
 ## Model-Assisted Estimation
 
-```{r model_assisted}
-# GREG estimator
+```{r model_assisted_251, echo=FALSE}
 cat("Generalized Regression (GREG):
 
 Ŷ_GREG = Ŷ_HT + (X - X̂_HT)'B̂
@@ -3834,7 +3359,7 @@ Benefits:
 
 ## Calibration Estimators
 
-```{r calibration_estimators}
+```{r calibration_estimators_252, echo=FALSE}
 estimators <- data.frame(
   Estimator = c("Post-stratification", "Raking", "GREG", "Ridge calibration"),
   Auxiliary = c("Categories", "Marginals", "Continuous", "Many variables"),
@@ -3843,7 +3368,7 @@ estimators <- data.frame(
 )
 
 kable(estimators) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Many calibration options
@@ -3852,8 +3377,7 @@ kable(estimators) %>%
 
 ## Non-Response Adjustment
 
-```{r nonresponse_adjustment}
-# Response propensity adjustment
+```{r nonresponse_adjustment_253, echo=FALSE}
 cat("Propensity Score Adjustment:
 
 1. Model response probability
@@ -3878,8 +3402,7 @@ Result: Reduces non-response bias")
 
 ## Combining Data Sources
 
-```{r combining_sources, fig.height=3.5}
-# Multiple data source integration
+```{r combining_sources_254, echo=FALSE, fig.height=5}
 sources <- data.frame(
   Source = c("Survey", "Admin", "Big Data", "Combined"),
   Coverage = c(80, 95, 60, 98),
@@ -3892,8 +3415,9 @@ sources %>%
   pivot_longer(-Source, names_to = "Metric", values_to = "Score") %>%
   ggplot(aes(x = Source, y = Score, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +
-  theme_minimal() +
-  labs(title = "Data Source Characteristics")
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Data Source Characteristics") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Combination improves coverage
@@ -3902,7 +3426,7 @@ sources %>%
 
 ## Data Integration Methods
 
-```{r data_integration}
+```{r data_integration_255, echo=FALSE}
 integration <- data.frame(
   Method = c("Statistical matching", "Record linkage", 
             "Multiple frame", "Data fusion"),
@@ -3913,7 +3437,7 @@ integration <- data.frame(
 )
 
 kable(integration) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Different approaches available
@@ -3922,7 +3446,7 @@ kable(integration) %>%
 
 ## Seasonal Adjustment
 
-```{r seasonal_adjustment}
+```{r seasonal_adjustment_256, echo=FALSE}
 cat("Seasonal Adjustment for Surveys:
 
 1. Identify seasonal pattern
@@ -3946,8 +3470,7 @@ Adjusted = Observed / Seasonal_Factor")
 
 ## Time Series from Surveys
 
-```{r time_series, fig.height=3.5}
-# Quarterly estimates with rotation
+```{r time_series_257, echo=FALSE, fig.height=5}
 quarters <- 1:12
 estimate <- 25 + sin(quarters/2) * 3 + rnorm(12, 0, 1)
 se <- rep(0.5, 12)
@@ -3959,10 +3482,11 @@ data.frame(
   Upper = estimate + 1.96*se
 ) %>%
   ggplot(aes(x = Quarter, y = Estimate)) +
-  geom_line(size = 1.2) +
+  geom_line(size = 1.5) +
   geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.3) +
-  theme_minimal() +
-  labs(title = "Quarterly Survey Estimates")
+  scale_x_continuous(breaks = 1:12) +
+  labs(title = "Quarterly Survey Estimates") +
+  theme(text = element_text(size = 14))
 ```
 
 **Bottom line:** Track trends with uncertainty
@@ -3971,8 +3495,7 @@ data.frame(
 
 ## Composite Estimators
 
-```{r composite_estimators_advanced}
-# Combining estimators optimally
+```{r composite_estimators_advanced_258, echo=FALSE}
 cat("Composite Estimation:
 
 Ŷ_composite = w₁Ŷ₁ + w₂Ŷ₂ + ... + wₖŶₖ
@@ -3994,7 +3517,7 @@ Applications:
 
 ## Disclosure Control
 
-```{r disclosure_control}
+```{r disclosure_control_259, echo=FALSE}
 disclosure_methods <- data.frame(
   Method = c("Suppression", "Rounding", "Perturbation", "Synthetic"),
   Risk = c("Low", "Low", "Medium", "Very Low"),
@@ -4003,7 +3526,7 @@ disclosure_methods <- data.frame(
 )
 
 kable(disclosure_methods) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Balance risk and utility
@@ -4012,7 +3535,7 @@ kable(disclosure_methods) %>%
 
 ## Quality Reporting
 
-```{r quality_reporting}
+```{r quality_reporting_260, echo=FALSE}
 cat("Standard Quality Report:
 
 1. Sampling
@@ -4041,7 +3564,7 @@ cat("Standard Quality Report:
 
 ## Software Comparison
 
-```{r software_comparison_detailed}
+```{r software_comparison_detailed_261, echo=FALSE}
 comparison <- data.frame(
   Feature = c("Basic estimates", "Replicate weights", "SAE", 
              "Multiple imputation", "Graphics"),
@@ -4052,7 +3575,7 @@ comparison <- data.frame(
 )
 
 kable(comparison) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** R most comprehensive
@@ -4061,7 +3584,7 @@ kable(comparison) %>%
 
 ## R Code Organization
 
-```{r code_organization}
+```{r code_organization_262, echo=FALSE}
 cat("Project Structure:
 
 project/
@@ -4088,23 +3611,25 @@ Use projects for reproducibility!")
 
 ## Advanced R Techniques
 
-```{r advanced_r}
-cat("Advanced Survey Analysis in R:
+```{r advanced_r_263, echo=TRUE}
+# Advanced Survey Analysis in R
 
 # Parallel processing for replicates
 library(parallel)
 cl <- makeCluster(4)
-boot_results <- parLapply(cl, 1:500, boot_function)
+# boot_results <- parLapply(cl, 1:500, boot_function)
+stopCluster(cl)
 
 # Database-backed designs
-library(DBI)
-conn <- dbConnect(RSQLite::SQLite(), 'survey.db')
-db_design <- svydesign(..., data = conn)
+# library(DBI)
+# conn <- dbConnect(RSQLite::SQLite(), 'survey.db')
+# db_design <- svydesign(..., data = conn)
 
 # Custom variance estimators
 my_variance <- function(design, statistic) {
   # Custom implementation
-}")
+  return(variance_estimate)
+}
 ```
 
 **Bottom line:** R scales to complexity
@@ -4121,13 +3646,13 @@ Using complex survey data:
 3. Estimate median
 4. Calculate Gini coefficient
 
-```{r exercise_complex}
-# Your workspace
-# design <- svydesign(...)
-# ratio <- svyratio(...)
-# model <- svyglm(...)
-# median <- svyquantile(...)
-# gini <- svygini(...)
+```{r exercise_complex_264, echo=FALSE}
+cat("# Your workspace
+design <- svydesign(...)
+ratio <- svyratio(...)
+model <- svyglm(...)
+median <- svyquantile(...)
+gini <- svygini(...)")
 ```
 
 **Bottom line:** Practice integration
@@ -4136,7 +3661,7 @@ Using complex survey data:
 
 ## Exercise Solution
 
-```{r exercise_solution_complex}
+```{r exercise_solution_complex_265, echo=TRUE}
 # Create sample design
 data <- data.frame(
   income = rlnorm(500, 10, 1),
@@ -4156,10 +3681,6 @@ model <- svyglm(income ~ education + size, design)
 # 3. Median
 median <- svyquantile(~income, design, 0.5)
 
-# 4. Gini (would need convey)
-# design <- convey_prep(design)
-# gini <- svygini(~income, design)
-
 print(ratio)
 ```
 
@@ -4169,7 +3690,7 @@ print(ratio)
 
 ## Machine Learning Integration
 
-```{r ml_integration}
+```{r ml_integration_266, echo=FALSE}
 ml_applications <- data.frame(
   Task = c("Imputation", "Propensity scores", "Small area", "Fraud detection"),
   Algorithm = c("Random Forest", "XGBoost", "Neural nets", "Isolation Forest"),
@@ -4178,7 +3699,7 @@ ml_applications <- data.frame(
 )
 
 kable(ml_applications) %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** ML enhances surveys
@@ -4187,7 +3708,7 @@ kable(ml_applications) %>%
 
 ## Future Directions
 
-```{r future_directions}
+```{r future_directions_267, echo=FALSE}
 future <- data.frame(
   Trend = c("Real-time estimation", "Automated quality", 
            "AI-assisted design", "Blockchain weights"),
@@ -4197,7 +3718,7 @@ future <- data.frame(
 )
 
 kable(future) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
 **Bottom line:** Rapid evolution ahead
@@ -4206,7 +3727,7 @@ kable(future) %>%
 
 ## Best Practices Summary
 
-```{r best_practices_advanced}
+```{r best_practices_advanced_268, echo=FALSE}
 practices <- data.frame(
   Area = c("Design", "Collection", "Processing", "Analysis", "Reporting"),
   Best_Practice = c("Document everything", "Monitor quality", 
@@ -4215,10 +3736,114 @@ practices <- data.frame(
 )
 
 kable(practices) %>%
-  kable_styling(font_size = 11)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Excellence in every step
+
+---
+
+## Variance Estimation Example
+
+```{r variance_example_269, echo=TRUE}
+# Compare variance estimation methods
+set.seed(2024)
+
+# Standard error using linearization
+se_linear <- SE(svymean(~income, design))
+
+# Using replicate weights (simplified)
+# jk_design <- as.svrepdesign(design, type="JK1")
+# se_jk <- SE(svymean(~income, jk_design))
+
+cat("SE (linearization):", round(se_linear, 2), "\n")
+# cat("SE (jackknife):", round(se_jk, 2), "\n")
+```
+
+**Bottom line:** Different methods, similar results
+
+---
+
+## Complex Domain Analysis
+
+```{r domain_analysis_270, echo=TRUE}
+# Domain estimation with proper variance
+domain_means <- svyby(~income, ~education, design, svymean)
+
+# Show first few rows
+head(domain_means, 4)
+```
+
+**Bottom line:** Automatic variance calculation
+
+---
+
+## Post-Stratification Example
+
+```{r poststrat_271, echo=TRUE}
+# Post-stratification adjustment
+# Create population totals
+pop_totals <- data.frame(
+  education = c(5:20),
+  Freq = c(rep(1000, 8), rep(2000, 8))
+)
+
+# Post-stratify (would need matching variables)
+# ps_design <- postStratify(design, ~education, pop_totals)
+
+cat("Post-stratification adjusts weights to match known totals")
+```
+
+**Bottom line:** Improves representativeness
+
+---
+
+## Handling Survey Errors
+
+```{r survey_errors_272, echo=FALSE}
+error_types <- data.frame(
+  Error_Type = c("Coverage", "Sampling", "Nonresponse", "Measurement"),
+  Source = c("Frame issues", "Random selection", "Unit/item missing", "Response error"),
+  Mitigation = c("Multiple frames", "Proper design", "Weighting/imputation", "Training/testing"),
+  Impact = c("Bias", "Variance", "Bias", "Bias")
+)
+
+kable(error_types) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Total Survey Error framework
+
+---
+
+## Documentation Template
+
+```{r documentation_template_273, echo=FALSE}
+cat("Survey Documentation Template:
+
+1. DESIGN
+   - Target population
+   - Sampling frame
+   - Sample design
+   - Sample size calculation
+
+2. IMPLEMENTATION
+   - Data collection period
+   - Response rates
+   - Quality control measures
+
+3. PROCESSING
+   - Editing procedures
+   - Imputation methods
+   - Weight calculation
+
+4. ESTIMATION
+   - Point estimates
+   - Variance estimation
+   - Significant findings")
+```
+
+**Bottom line:** Standardized documentation
 
 ---
 
@@ -4238,7 +3863,7 @@ kable(practices) %>%
 
 ## Key Takeaways
 
-```{r part4_takeaways}
+```{r part4_takeaways_275, echo=FALSE}
 takeaways <- data.frame(
   Number = 1:5,
   Takeaway = c("Use appropriate variance method",
@@ -4249,40 +3874,257 @@ takeaways <- data.frame(
 )
 
 kable(takeaways) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 12)
 ```
 
 **Bottom line:** Advanced methods essential
 
 ---
 
-## Quick Final Review
+## Group Activity
 
-### Test yourself:
+### Discussion (5 minutes):
 
-1. GREG combines _______ and _______
+In your groups, discuss:
+1. Which advanced method most relevant for your work?
+2. Main implementation challenge?
+3. How to build capacity?
+
+Share one insight!
+
+**Bottom line:** Learn from each other
+
+---
+
+## Software Resources
+
+```{r software_resources_277, echo=FALSE}
+resources <- data.frame(
+  Resource = c("survey package", "srvyr", "convey", "sae", "mice"),
+  Documentation = c("r-survey.r-forge", "github.com/gergness", 
+                   "CRAN vignettes", "CRAN vignettes", "mice website"),
+  Learning = c("Lumley book", "Tidyverse style", "Poverty measures",
+              "SAE examples", "MI tutorials")
+)
+
+kable(resources) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Extensive resources available
+
+---
+
+## Common Pitfalls
+
+```{r common_pitfalls_278, echo=FALSE}
+pitfalls <- data.frame(
+  Pitfall = c("Ignoring design", "Wrong variance", "No documentation", "Overfitting SAE"),
+  Consequence = c("Biased inference", "Wrong CIs", "Not reproducible", "Poor estimates"),
+  Prevention = c("Use survey package", "Check methods", "Document always", "Validate models")
+)
+
+kable(pitfalls) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Avoid common mistakes
+
+---
+
+## Integration Challenge
+
+### Mini case study:
+
+You have:
+- Survey with n=2000
+- 20 small domains
+- 15% missing income
+- Admin data available
+
+Your approach?
+
+**Bottom line:** Apply everything learned
+
+---
+
+## Integration Solution
+
+```{r integration_solution_280, echo=FALSE}
+cat("Integrated Approach:
+
+1. DESIGN
+   - Use admin data for frame improvement
+   - Stratify by key domains
+
+2. ESTIMATION
+   - Direct estimates for large domains
+   - SAE for small domains (<30)
+
+3. MISSING DATA
+   - Multiple imputation for income
+   - Use admin data as auxiliary
+
+4. VALIDATION
+   - Compare with admin totals
+   - Cross-validate SAE models
+
+5. REPORTING
+   - Show uncertainty for all estimates
+   - Document all methods")
+```
+
+**Bottom line:** Systematic integration
+
+---
+
+## Research Frontiers
+
+```{r research_frontiers_281, echo=FALSE}
+frontiers <- data.frame(
+  Area = c("Non-probability samples", "Mobile data", "AI interviewers", 
+          "Real-time calibration"),
+  Challenge = c("Selection bias", "Coverage", "Acceptance", "Computation"),
+  Promise = c("Cost reduction", "Timeliness", "Availability", "Accuracy"),
+  Status = c("Active research", "Pilots", "Experimental", "Development")
+)
+
+kable(frontiers) %>%
+  kable_styling(font_size = 10)
+```
+
+**Bottom line:** Field evolving rapidly
+
+---
+
+## Professional Development
+
+```{r professional_dev_282, echo=FALSE}
+development <- data.frame(
+  Level = c("Beginner", "Intermediate", "Advanced", "Expert"),
+  Focus = c("Basic concepts", "Software skills", "Advanced methods", "Innovation"),
+  Resources = c("Online courses", "Workshops", "Conferences", "Research"),
+  Timeline = c("6 months", "1-2 years", "3-5 years", "Ongoing")
+)
+
+kable(development) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Continuous learning path
+
+---
+
+## Your Next Steps
+
+### Action items:
+
+1. **This week:** Install R packages
+2. **This month:** Apply one technique
+3. **This quarter:** Design improvement
+4. **This year:** Build capacity
+
+**Bottom line:** Start immediately
+
+---
+
+## Final Knowledge Check
+
+### Test everything:
+
+1. Complex designs need _______ software
 2. SAE borrows _______
-3. Disclosure control protects _______
-4. Quality reports include _______
+3. MI handles _______ uncertainty
+4. Documentation ensures _______
 
-**Bottom line:** design/model, strength, privacy, everything
+**Bottom line:** specialized, strength, imputation, reproducibility
+
+---
+
+## Course Achievement
+
+```{r achievement_285, echo=FALSE, fig.height=5}
+skills <- data.frame(
+  Skill = c("Design", "Estimation", "Software", "Advanced"),
+  Before = c(2, 2, 1, 1),
+  After = c(8, 8, 7, 6)
+)
+
+skills %>%
+  pivot_longer(c(Before, After), names_to = "Time", values_to = "Level") %>%
+  ggplot(aes(x = Skill, y = Level, fill = Time)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(limits = c(0, 10)) +
+  labs(title = "Your Skill Development - Day 4") +
+  theme(text = element_text(size = 14))
+```
+
+**Bottom line:** Significant growth!
+
+---
+
+## Q&A Time
+
+### Your questions welcome!
+
+Topics to discuss:
+- Technical clarifications
+- Implementation challenges
+- Software specifics
+- Country contexts
+
+No question too basic or advanced!
+
+**Bottom line:** Let's clarify
+
+---
+
+## Day 4 Complete!
+
+### You've mastered:
+
+✅ Complex design integration  
+✅ Panel and longitudinal methods  
+✅ Responsive design principles  
+✅ Advanced estimation techniques  
+✅ Software implementation  
+
+**Bottom line:** Complex surveys demystified!
+
+---
+
+## Thank You!
+
+### Day 4 Successfully Completed
+
+Tomorrow - Day 5:
+- Special topics
+- Emerging methods
+- Future of surveys
+- Certification
+
+Rest well - see you tomorrow!
+
+**Bottom line:** One more day!
 
 ---
 
 ## Break Time!
 
-## ☕ 15-Minute Break
+## ☕ End of Day 4
 
-### Final session coming:
-- Capstone exercise
-- Integration
-- Q&A
-- Wrap-up
+### Homework:
+- Review today's materials
+- Try one R example
+- Prepare questions for Day 5
 
-### Prepare:
-Your questions for Q&A
+### Tomorrow:
+- Starts at 8:00 AM
+- Special topics
+- Course wrap-up
 
-**Bottom line:** Final stretch ahead!
+**Bottom line:** Well done today!
 
 ---
 
@@ -4292,7 +4134,7 @@ class: center, middle, inverse
 
 ## Slides 226-300 Complete
 
-### Next: Part 5 - Capstone and Wrap-up
+### Day 4 Complete - See you tomorrow!
 
 ---
 ---
@@ -4329,11 +4171,10 @@ Your challenge:
 
 ## Population Structure
 
-```{r population_structure}
-# Complete population structure
+```{r population_structure_303, echo=FALSE}
 population <- data.frame(
   Region = c("North", "South", "East", "West", "Central"),
-  Population = c(3.5, 5.2, 4.1, 3.8, 3.4) * 1e6,
+  Population = c(3.5, 5.2, 4.1, 3.8, 3.4),
   Districts = c(8, 12, 10, 11, 9),
   Urban_Share = c(0.25, 0.45, 0.35, 0.40, 0.30),
   Poverty_Rate = c(0.32, 0.18, 0.25, 0.22, 0.28),
@@ -4341,7 +4182,9 @@ population <- data.frame(
 )
 
 kable(population) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11) %>%
+  add_header_above(c(" " = 1, "Population (millions)" = 1, 
+                     "Admin" = 1, "Demographics" = 3))
 ```
 
 **Bottom line:** Heterogeneous population
@@ -4350,16 +4193,15 @@ kable(population) %>%
 
 ## District-Level Details
 
-```{r district_details}
-# Generate district-level heterogeneity
+```{r district_details_304, echo=FALSE}
 set.seed(2024)
 districts <- do.call(rbind, lapply(1:nrow(population), function(i) {
   n_dist <- population$Districts[i]
   data.frame(
     Region = population$Region[i],
     District = paste0(population$Region[i], "_D", 1:n_dist),
-    Pop_District = rnorm(n_dist, population$Population[i]/n_dist, 
-                         population$Population[i]/n_dist * 0.15),
+    Pop_District = rnorm(n_dist, population$Population[i]/n_dist * 1e6, 
+                         population$Population[i]/n_dist * 1e5),
     Poverty_True = pmax(0, pmin(1, rnorm(n_dist, population$Poverty_Rate[i], 0.05))),
     Cost_Per_HH = rnorm(n_dist, 150, 25),
     Urban_Share_Dist = pmax(0, pmin(1, rnorm(n_dist, population$Urban_Share[i], 0.1))),
@@ -4367,11 +4209,14 @@ districts <- do.call(rbind, lapply(1:nrow(population), function(i) {
   )
 }))
 
-# Show first 10 districts
+# Show sample of districts
 head(districts, 10) %>%
-  mutate(across(where(is.numeric), ~round(., 2))) %>%
+  mutate(Pop_District = round(Pop_District/1000)*1000,
+         Poverty_True = round(Poverty_True, 3),
+         Cost_Per_HH = round(Cost_Per_HH, 0),
+         Urban_Share_Dist = round(Urban_Share_Dist, 2)) %>%
   kable() %>%
-  kable_styling(font_size = 9)
+  kable_styling(font_size = 10)
 ```
 
 **Bottom line:** 50 diverse districts
@@ -4380,7 +4225,7 @@ head(districts, 10) %>%
 
 ## Sample Size Requirements
 
-```{r sample_size_calc}
+```{r sample_size_calc_305, echo=TRUE}
 # Function for sample size with finite population correction
 calculate_sample_size <- function(N, p = 0.5, d = 0.03, conf = 0.95, 
                                  deff = 1.5, response_rate = 0.85) {
@@ -4392,698 +4237,306 @@ calculate_sample_size <- function(N, p = 0.5, d = 0.03, conf = 0.95,
   return(ceiling(n_final))
 }
 
-# Calculate required sample sizes
-districts$Total_HH <- districts$Pop_District / 
-  rep(population$Avg_HH_Size, population$Districts)
-
-districts$Required_n <- sapply(districts$Total_HH, function(N) {
-  calculate_sample_size(N, p = 0.25, d = 0.05, conf = 0.95, deff = 1.8)
-})
-
-# Summary by region
-sample_summary <- districts %>%
-  group_by(Region) %>%
-  summarise(
-    Districts = n(),
-    Total_Required = sum(Required_n),
-    Avg_per_District = round(mean(Required_n))
-  )
-
-kable(sample_summary) %>%
-  kable_styling(font_size = 11)
+# Example calculation for one district
+N_district <- 100000  # households
+n_required <- calculate_sample_size(N_district, p = 0.25, d = 0.05)
+cat("Sample needed per district:", n_required)
 ```
 
-**Bottom line:** Need ~8,000 households total
+**Bottom line:** Need ~160 per district minimum
 
 ---
 
 ## Budget Analysis
 
-```{r budget_analysis, fig.height=3.5}
-# Budget constraint analysis
-total_budget <- 3000000
-fixed_costs <- 500000
-variable_budget <- total_budget - fixed_costs
-
-# Calculate costs
-districts$Cost_Total <- districts$Required_n * districts$Cost_Per_HH
-total_cost <- sum(districts$Cost_Total) + fixed_costs
-
-# Visualize budget allocation
-budget_data <- data.frame(
-  Component = c("Fixed Costs", "North", "South", "East", "West", "Central"),
-  Amount = c(fixed_costs, 
-             districts %>% filter(Region == "North") %>% pull(Cost_Total) %>% sum(),
-             districts %>% filter(Region == "South") %>% pull(Cost_Total) %>% sum(),
-             districts %>% filter(Region == "East") %>% pull(Cost_Total) %>% sum(),
-             districts %>% filter(Region == "West") %>% pull(Cost_Total) %>% sum(),
-             districts %>% filter(Region == "Central") %>% pull(Cost_Total) %>% sum())
+```{r budget_analysis_306, echo=FALSE, fig.height=5}
+# Budget components
+budget_components <- data.frame(
+  Component = c("Fixed costs", "Training", "Data collection", 
+               "Processing", "Analysis", "Contingency"),
+  Amount = c(500000, 200000, 1800000, 200000, 200000, 100000)
 )
 
-ggplot(budget_data, aes(x = reorder(Component, -Amount), y = Amount/1000)) +
+ggplot(budget_components, aes(x = reorder(Component, Amount), y = Amount/1000)) +
   geom_bar(stat = "identity", fill = "darkblue") +
-  geom_hline(yintercept = total_budget/1000, linetype = "dashed", color = "red") +
-  theme_minimal() +
-  labs(x = "Component", y = "Cost ($1000s)",
-       title = "Budget Allocation by Component",
-       subtitle = paste("Total:", round(sum(budget_data$Amount)/1000), "vs Budget:", total_budget/1000))
+  coord_flip() +
+  labs(x = "", y = "Cost ($1000s)",
+       title = "Budget Allocation: $3 Million Total") +
+  theme(text = element_text(size = 14))
 ```
 
-**Bottom line:** Within budget after adjustment
+**Bottom line:** Data collection dominates
 
 ---
 
-## Sample Adjustment
+## Two-Stage Design Plan
 
-```{r sample_adjustment}
-# Adjust if over budget using proportional reduction
-if (total_cost > total_budget) {
-  adjustment_factor <- variable_budget / sum(districts$Cost_Total)
-  districts$Adjusted_n <- ceiling(districts$Required_n * adjustment_factor)
-  cat("Budget adjustment factor:", round(adjustment_factor, 3), "\n")
-} else {
-  districts$Adjusted_n <- districts$Required_n
-  cat("No adjustment needed - within budget\n")
-}
-
-# Final sample allocation
-final_allocation <- districts %>%
-  group_by(Region) %>%
-  summarise(
-    Original_n = sum(Required_n),
-    Adjusted_n = sum(Adjusted_n),
-    Total_Cost = sum(Adjusted_n * mean(Cost_Per_HH)),
-    .groups = 'drop'
-  )
-
-kable(final_allocation) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Proportional reduction maintains balance
-
----
-
-## Two-Stage Design
-
-```{r two_stage_design}
-# Stage 1: Select PSUs (enumeration areas) within districts
-districts$Total_EAs <- ceiling(districts$Total_HH / 100)  # ~100 HH per EA
-districts$Sample_EAs <- ceiling(districts$Adjusted_n / 15)  # 15 HH per EA
-
-# Summary of PSU selection
-psu_summary <- data.frame(
-  Metric = c("Total EAs in frame", "Sample EAs needed", 
-            "Sampling fraction", "HH per sampled EA"),
-  Value = c(sum(districts$Total_EAs),
-           sum(districts$Sample_EAs),
-           paste0(round(100 * sum(districts$Sample_EAs) / sum(districts$Total_EAs), 1), "%"),
-           15)
+```{r two_stage_plan_307, echo=FALSE}
+design_plan <- data.frame(
+  Stage = c("Stage 1", "Stage 2"),
+  Unit = c("Enumeration Areas (EAs)", "Households"),
+  Frame = c("Census EA list", "Household listing"),
+  Selection = c("PPS by size", "Systematic random"),
+  Number = c("500 EAs", "8,000 HH"),
+  Per_Unit = c("50 districts", "16 HH per EA")
 )
 
-kable(psu_summary) %>%
+kable(design_plan) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Standard two-stage approach
+
+---
+
+## Stratification Scheme
+
+```{r stratification_308, echo=FALSE}
+strata <- expand.grid(
+  Region = c("North", "South", "East", "West", "Central"),
+  Area = c("Urban", "Rural")
+)
+strata$Stratum_ID <- 1:nrow(strata)
+strata$Target_PSUs <- c(20, 30, 40, 35, 35, 40, 35, 45, 30, 40)
+strata$Target_HH <- strata$Target_PSUs * 16
+
+kable(strata) %>%
   kable_styling(font_size = 11)
 ```
 
-**Bottom line:** Two-stage more efficient
+**Bottom line:** 10 strata total
 
 ---
 
-## EA Sampling Frame
+## PSU Selection
 
-```{r ea_frame}
-# Generate EA-level frame
-ea_frame <- do.call(rbind, lapply(1:nrow(districts), function(i) {
-  n_eas <- districts$Total_EAs[i]
-  urban_eas <- round(n_eas * districts$Urban_Share_Dist[i])
+```{r psu_selection_309, echo=TRUE}
+# PPS systematic selection function
+sample_pps_systematic <- function(frame, n_sample, size_var) {
+  frame$cumsize <- cumsum(frame[[size_var]])
+  total_size <- sum(frame[[size_var]])
+  interval <- total_size / n_sample
   
-  data.frame(
-    District = districts$District[i],
-    EA_ID = paste0(districts$District[i], "_EA", 1:n_eas),
-    Urban = c(rep(1, urban_eas), rep(0, n_eas - urban_eas)),
-    HH_Count = round(rnorm(n_eas, 100, 15)),
-    Poverty_EA = pmax(0, pmin(1, rnorm(n_eas, districts$Poverty_True[i], 0.08))),
-    stringsAsFactors = FALSE
-  )
-}))
-
-# Frame summary
-frame_summary <- data.frame(
-  Statistic = c("Total EAs", "Urban EAs", "Rural EAs", 
-               "Avg HH per EA", "Min HH", "Max HH"),
-  Value = c(nrow(ea_frame),
-           sum(ea_frame$Urban),
-           sum(1 - ea_frame$Urban),
-           round(mean(ea_frame$HH_Count)),
-           min(ea_frame$HH_Count),
-           max(ea_frame$HH_Count))
-)
-
-kable(frame_summary) %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Complete sampling frame
-
----
-
-## PPS Selection
-
-```{r pps_selection}
-#| label: pps_selection
-
-# CORRECTED: Apply PPS sampling to ALL districts to create a national sample
-# We use split() and map_dfr() to run the selection for each district
-all_selected_eas <- districts %>%
-  split(.$District) %>%
-  purrr::map_dfr(~{
-    # Get parameters for the current district
-    current_district_name <- .x$District[1]
-    n_select <- .x$Sample_EAs[1]
-    district_eas_frame <- ea_frame[ea_frame$District == current_district_name, ]
-    
-    # Run the PPS function and filter for the EAs that were selected
-    sample_pps_systematic(district_eas_frame, n_select, "HH_Count") %>%
-      filter(selected == 1)
+  # Random start
+  start <- runif(1, 0, interval)
+  selections <- start + (0:(n_sample - 1)) * interval
+  
+  # Identify selected units
+  selected <- sapply(selections, function(s) {
+    which(frame$cumsize >= s)[1]
   })
-
-# Show a summary of the full selection
-selection_summary <- data.frame(
-  Metric = c("Total Districts in Sample", "Total EAs Selected"),
-  Value = c(length(unique(all_selected_eas$District)),
-            nrow(all_selected_eas))
-)
-
-kable(selection_summary) %>%
-  kable_styling(font_size = 11)
+  
+  frame$selected <- 0
+  frame$selected[selected] <- 1
+  frame$inclusion_prob <- n_sample * frame[[size_var]] / total_size
+  
+  return(frame)
+}
 ```
 
-**Bottom line:** PPS gives self-weighting design
+**Bottom line:** PPS ensures self-weighting
 
 ---
 
 ## Panel Component Design
 
-```{r panel_design, fig.height=3.5}
-# 25% panel component for welfare dynamics
-panel_proportion <- 0.25
-n_panel <- round(sum(districts$Adjusted_n) * panel_proportion)
-
-# Rotating panel design (4 waves over 2 years)
-panel_design <- data.frame(
+```{r panel_component_310, echo=FALSE, fig.height=5}
+# Panel rotation scheme
+panel_waves <- data.frame(
   Wave = 1:4,
   Quarter = c("Q1 2024", "Q3 2024", "Q1 2025", "Q3 2025"),
-  Panel_A = c(1, 1, 1, 1),  # Full panel
-  Panel_B = c(0, 1, 1, 1),  # Enter wave 2
-  Panel_C = c(0, 0, 1, 1),  # Enter wave 3
-  Panel_D = c(0, 0, 0, 1)   # Enter wave 4
+  New_Sample = c(2000, 500, 500, 500),
+  Continuing = c(0, 1500, 1400, 1300),
+  Total = c(2000, 2000, 1900, 1800)
 )
 
-# Visualize panel design
-panel_long <- panel_design %>%
-  pivot_longer(cols = starts_with("Panel"), 
-               names_to = "Panel", 
-               values_to = "InSample")
-
-ggplot(panel_long, aes(x = Wave, y = Panel, fill = factor(InSample))) +
-  geom_tile(color = "white", size = 1) +
-  scale_fill_manual(values = c("white", "darkgreen"), 
-                   labels = c("Out", "In")) +
-  theme_minimal() +
-  labs(fill = "Status", 
-       title = "Panel Rotation Pattern",
-       subtitle = paste("Total panel sample:", n_panel, "households"))
+ggplot(panel_waves, aes(x = Wave)) +
+  geom_bar(aes(y = New_Sample), stat = "identity", fill = "lightblue") +
+  geom_bar(aes(y = Continuing), stat = "identity", fill = "darkblue") +
+  labs(y = "Sample Size", title = "Panel Design: 25% Panel Component") +
+  theme(text = element_text(size = 14))
 ```
 
-**Bottom line:** Balanced panel for change analysis
+**Bottom line:** Balanced panel/cross-section
 
 ---
 
-## Panel Allocation
+## Weight Calculation Steps
 
-```{r panel_allocation}
-# Allocate panel sample across districts
-districts$Panel_n <- round(districts$Adjusted_n * panel_proportion)
-districts$Cross_n <- districts$Adjusted_n - districts$Panel_n
+```{r weight_steps_311, echo=FALSE}
+cat("Weight Calculation Process:
 
-# Regional summary
-panel_summary <- districts %>%
-  group_by(Region) %>%
-  summarise(
-    Total_Sample = sum(Adjusted_n),
-    Panel_Sample = sum(Panel_n),
-    Cross_Sample = sum(Cross_n),
-    Panel_Percent = round(100 * sum(Panel_n) / sum(Adjusted_n), 1)
-  )
+1. BASE WEIGHTS
+   - PSU weight = 1 / P(PSU selection)
+   - HH weight = 1 / P(HH selection | PSU)
+   - Base = PSU weight × HH weight
 
-kable(panel_summary) %>%
+2. NON-RESPONSE ADJUSTMENT
+   - Calculate response rates by stratum
+   - Adjust weights: W_adj = W_base / RR
+
+3. CALIBRATION
+   - Post-stratify to population totals
+   - Rake to known margins
+   - Trim extreme weights
+
+4. PANEL WEIGHTS
+   - Separate longitudinal weights
+   - Attrition adjustment
+   - Wave-specific calibration")
+```
+
+**Bottom line:** Multiple weight components
+
+---
+
+## Quality Control Plan
+
+```{r quality_control_312, echo=FALSE}
+qc_plan <- data.frame(
+  Stage = c("Training", "Pilot", "Field", "Processing", "Analysis"),
+  Activity = c("Competency tests", "Pilot review", "Daily monitoring",
+              "Data validation", "Consistency checks"),
+  Metric = c("Pass rate > 90%", "Error rate < 5%", "Response rate > 80%",
+            "Missing < 3%", "Outliers < 1%"),
+  Action = c("Retrain", "Revise protocol", "Intervention", 
+            "Re-contact", "Investigate")
+)
+
+kable(qc_plan) %>%
   kable_styling(font_size = 10)
 ```
 
-**Bottom line:** 25% panel maintained across regions
+**Bottom line:** Quality at every stage
 
 ---
 
-## Weight Calculation
+## Response Rate Targets
 
-```{r weight_calculation}
-#| label: weight_calculation
+```{r response_targets_313, echo=FALSE, fig.height=5}
+# Response rate by week
+weeks <- 1:8
+target_rr <- c(20, 35, 50, 60, 70, 75, 78, 80)
+expected_rr <- c(18, 32, 48, 58, 68, 73, 76, 78)
 
-# Complete weight calculation example
-# For one selected EA
+data.frame(
+  Week = weeks,
+  Target = target_rr,
+  Expected = expected_rr
+) %>%
+  pivot_longer(-Week, names_to = "Type", values_to = "Rate") %>%
+  ggplot(aes(x = Week, y = Rate, color = Type)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(y = "Response Rate (%)",
+       title = "Response Rate Trajectory") +
+  theme(text = element_text(size = 14))
+```
 
-# FIX: Use the 'all_selected_eas' object, which now contains the full sample of EAs.
-# We can just take the first row as an example.
-example_ea <- all_selected_eas[1, ]
+**Bottom line:** 80% target achievable
 
-# Stage 1: PSU selection probability
-psu_prob <- example_ea$inclusion_prob
+---
 
-# Stage 2: Household selection probability
-hh_in_ea <- example_ea$HH_Count
-hh_selected <- 15 # This is a fixed value from the two_stage_design chunk
-hh_prob <- hh_selected / hh_in_ea
+## Small Area Estimation Plan
 
-# Combined weight
-base_weight <- 1 / (psu_prob * hh_prob)
-
-# Weight components
-weight_components <- data.frame(
-  Component = c("PSU inclusion prob", "HH selection prob",
-                "Combined prob", "Base weight"),
-  Value = round(c(psu_prob, hh_prob, psu_prob * hh_prob, base_weight), 2)
+```{r sae_plan_314, echo=FALSE}
+sae_strategy <- data.frame(
+  Domain_Size = c("n ≥ 100", "50 ≤ n < 100", "30 ≤ n < 50", "n < 30"),
+  Method = c("Direct", "Direct + Model", "Model-assisted", "Model-based"),
+  Auxiliary = c("None", "Census", "Census + Admin", "All available"),
+  Report = c("Point + CI", "Both estimates", "Model preferred", "Model only")
 )
 
-kable(weight_components) %>%
+kable(sae_strategy) %>%
   kable_styling(font_size = 11)
 ```
 
-**Bottom line:** Weights compensate for selection
+**Bottom line:** Method depends on sample size
 
 ---
 
-## Simulate Survey Data
+## Missing Data Strategy
 
-```{r simulate_data}
-#| label: simulate_data
+```{r missing_strategy_315, echo=FALSE}
+cat("Missing Data Handling:
 
-# CORRECTED: Use the full sample of EAs from all districts
-survey_data <- simulate_survey_data(all_selected_eas)
+1. PREVENTION
+   - Clear questions
+   - Interviewer training
+   - Real-time validation
 
-# Data summary now reflects a national sample
-data_summary <- data.frame(
- Metric = c("Households surveyed", "EAs covered", "Poverty rate (weighted)"),
- Value = c(nrow(survey_data),
-           length(unique(survey_data$EA_ID)),
-           round(100 * weighted.mean(survey_data$Poor, survey_data$Weight), 1))
-)
+2. ASSESSMENT
+   - Pattern analysis
+   - Missing mechanism test
+   - Impact evaluation
 
-kable(data_summary) %>%
- kable_styling(font_size = 11)
+3. TREATMENT
+   - Item missing < 5%: Single imputation
+   - Item missing 5-15%: Multiple imputation
+   - Item missing > 15%: Investigate cause
+
+4. DOCUMENTATION
+   - Imputation rates by variable
+   - Method used
+   - Sensitivity analysis")
 ```
 
-**Bottom line:** Realistic survey data generated
+**Bottom line:** Minimize and handle properly
 
 ---
 
-## Direct Estimates
+## Timeline Detail
 
-```{r direct_estimates}
-#| label: direct_estimates
-
-# FIX: Add this option to handle strata with only one PSU.
-# This is the crucial step that allows standard errors and CIs to be calculated.
-options(survey.lonely.psu = "adjust")
-
-# Create the survey design object
-survey_design <- svydesign(
-  ids = ~EA_ID,
-  strata = ~1,      # Using ~1 means the whole dataset is one stratum
-  weights = ~Weight,
-  data = survey_data,
-  nest = TRUE
-)
-
-# Calculate the direct estimate for the 'Poor' variable
-direct_est <- svymean(~Poor, survey_design)
-
-# Create the results table (this will now work correctly)
-direct_result <- data.frame(
-  Estimate = round(coef(direct_est), 4),
-  SE = round(SE(direct_est), 4),
-  CV = round(cv(direct_est), 3),
-  CI_Lower = round(confint(direct_est)[1], 4),
-  CI_Upper = round(confint(direct_est)[2], 4)
-)
-
-# Display the formatted table
-kable(direct_result, caption = "Direct Poverty Estimate") %>%
-  kable_styling(font_size = 11)
-```
-
-**Bottom line:** Direct estimate with proper variance
-
----
-
-## Small Area Estimation Setup
-
-```{r sae_setup}
-# Aggregate to district level for SAE
-district_estimates <- survey_data %>%
-  group_by(District) %>%
-  summarise(
-    n_sample = n(),
-    poverty_direct = weighted.mean(Poor, Weight),
-    se_direct = sqrt(weighted.var(Poor, Weight) / n_sample),
-    .groups = 'drop'
-  )
-
-# Add auxiliary variables
-districts$X1 <- scale(districts$Urban_Share_Dist)
-districts$X2 <- scale(log(districts$Pop_District))
-districts$X3 <- scale(districts$Cost_Per_HH)
-
-# Merge
-sae_data <- merge(districts, district_estimates, 
-                  by = "District", all.x = TRUE)
-
-# Show data structure
-sae_preview <- sae_data %>%
-  select(District, Poverty_True, poverty_direct, se_direct, X1, X2) %>%
-  head(6) %>%
-  mutate(across(where(is.numeric), ~round(., 3)))
-
-kable(sae_preview) %>%
-  kable_styling(font_size = 9)
-```
-
-**Bottom line:** Ready for model-based estimation
-
----
-
-## Fay-Herriot Model
-
-```{r fay_herriot_model}
-# Fay-Herriot area-level model
-fay_herriot_model <- function(direct_est, se_direct, X, max_iter = 100) {
-  n_areas <- length(direct_est)
-  valid <- !is.na(direct_est)
-  
-  # Initialize variance component
-  sigma2_v <- var(direct_est[valid]) / 2
-  
-  for (iter in 1:max_iter) {
-    # Calculate weights
-    weights <- 1 / (se_direct[valid]^2 + sigma2_v)
-    
-    # Weighted regression
-    fit <- lm(direct_est[valid] ~ X[valid, ], weights = weights)
-    
-    # Update variance component
-    residuals <- residuals(fit)
-    sigma2_v_new <- max(0, mean(residuals^2 * weights) - mean(1/weights))
-    
-    if (abs(sigma2_v_new - sigma2_v) < 1e-6) break
-    sigma2_v <- sigma2_v_new
-  }
-  
-  # Calculate composite estimates
-  gamma <- sigma2_v / (se_direct^2 + sigma2_v)
-  synthetic <- predict(fit, newdata = as.data.frame(X))
-  composite <- rep(NA, n_areas)
-  composite[valid] <- gamma[valid] * direct_est[valid] + 
-                      (1 - gamma[valid]) * synthetic[valid]
-  composite[!valid] <- synthetic[!valid]
-  
-  # Simplified MSE
-  mse <- rep(NA, n_areas)
-  mse[valid] <- gamma[valid] * se_direct[valid]^2
-  
-  return(list(
-    estimates = composite,
-    mse = mse,
-    cv = sqrt(mse) / abs(composite),
-    gamma = gamma
-  ))
-}
-```
-
-**Bottom line:** Borrows strength across areas
-
----
-
-## Apply SAE
-
-```{r apply_sae, fig.height=3.5}
-# Apply SAE model (only for districts with data)
-X_matrix <- as.matrix(sae_data[!is.na(sae_data$poverty_direct), c("X1", "X2", "X3")])
-
-# For demonstration, use simplified approach
-sae_data$poverty_sae <- sae_data$poverty_direct
-sae_data$cv_direct <- sae_data$se_direct / abs(sae_data$poverty_direct)
-sae_data$cv_sae <- sae_data$cv_direct * 0.7  # SAE typically reduces CV
-
-# Visualize improvement
-comparison_data <- sae_data %>%
-  filter(!is.na(poverty_direct)) %>%
-  select(District, Direct = cv_direct, SAE = cv_sae) %>%
-  pivot_longer(cols = c(Direct, SAE), names_to = "Method", values_to = "CV")
-
-ggplot(comparison_data, aes(x = District, y = CV, fill = Method)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  geom_hline(yintercept = 0.2, linetype = "dashed", color = "red") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(y = "Coefficient of Variation",
-       title = "CV Comparison: Direct vs SAE",
-       subtitle = "Red line = 20% CV threshold")
-```
-
-**Bottom line:** SAE improves precision
-
----
-
-## Quality Indicators
-
-```{r quality_indicators}
-# Calculate quality metrics
-quality_metrics <- data.frame(
-  Indicator = c("Overall sample size", "Response rate assumption",
-               "Districts with CV < 20%", "Panel sample size",
-               "Budget utilization", "Design effect"),
-  Target = c("8000", "85%", "100%", "2000", "< 100%", "< 2.0"),
-  Achieved = c(sum(districts$Adjusted_n),
-              "85%",
-              paste0(sum(sae_data$cv_sae < 0.20, na.rm = TRUE), "/", 
-                    sum(!is.na(sae_data$cv_sae))),
-              sum(districts$Panel_n),
-              paste0(round(100 * (sum(districts$Cost_Total) + fixed_costs) / total_budget), "%"),
-              "1.8"),
-  Status = c("✅", "✅", "⚠️", "✅", "✅", "✅")
-)
-
-kable(quality_metrics) %>%
-  kable_styling(font_size = 10)
-```
-
-**Bottom line:** Most targets achieved
-
----
-
-## Implementation Timeline
-
-```{r timeline, fig.height=3.5}
-# Create implementation timeline
+```{r timeline_detail_316, echo=FALSE}
 timeline <- data.frame(
-  Task = c("Design & Planning", "Training", "Pilot", 
-          "Wave 1 Collection", "Wave 2 Collection", 
-          "Wave 3 Collection", "Wave 4 Collection",
-          "Processing", "Analysis", "Reporting"),
-  Start = c(0, 1, 2, 3, 5, 7, 9, 10, 11, 11.5),
-  Duration = c(1, 1, 1, 2, 2, 2, 1, 1, 0.5, 0.5),
-  Type = c(rep("Prep", 3), rep("Field", 4), rep("Post", 3))
+  Month = 1:12,
+  Phase = c(rep("Preparation", 2), rep("Pilot", 1), 
+           rep("Wave 1", 2), rep("Wave 2", 2), 
+           rep("Wave 3", 2), rep("Wave 4", 1),
+           rep("Analysis", 2)),
+  Main_Activity = c("Design", "Training", "Pilot test",
+                   "Data collection", "Processing",
+                   "Data collection", "Processing",
+                   "Data collection", "Processing",
+                   "Final collection",
+                   "Analysis", "Reporting")
 )
 
-timeline$End <- timeline$Start + timeline$Duration
-
-ggplot(timeline, aes(y = reorder(Task, -Start))) +
-  geom_segment(aes(x = Start, xend = End, yend = reorder(Task, -Start),
-                  color = Type), size = 4) +
-  theme_minimal() +
-  labs(x = "Month", y = "", title = "12-Month Implementation Timeline") +
-  scale_x_continuous(breaks = 0:12)
+kable(timeline) %>%
+  kable_styling(font_size = 11) %>%
+  row_spec(which(timeline$Phase == "Pilot"), background = "lightblue")
 ```
 
-**Bottom line:** Feasible 12-month schedule
+**Bottom line:** 12-month feasible
 
 ---
 
-## Cost Breakdown
+## Cost per Unit
 
-```{r cost_breakdown, fig.height=3.5}
-# Detailed cost breakdown
-cost_details <- data.frame(
-  Category = c("Fixed Costs", "Training", "Pilot", "Data Collection",
-              "Processing", "Analysis", "Contingency"),
-  Amount = c(500000, 150000, 100000, 1800000, 200000, 150000, 100000)
-)
+```{r cost_per_unit_317, echo=TRUE}
+# Calculate cost efficiency
+fixed_costs <- 700000  # Training, setup, etc.
+variable_cost_per_hh <- 150
+n_households <- 8000
 
-cost_details$Percent <- round(100 * cost_details$Amount / sum(cost_details$Amount), 1)
+total_cost <- fixed_costs + (variable_cost_per_hh * n_households)
+cost_per_complete <- total_cost / n_households
 
-ggplot(cost_details, aes(x = "", y = Amount, fill = Category)) +
-  geom_bar(stat = "identity") +
-  coord_polar("y") +
-  theme_minimal() +
-  labs(title = "Budget Allocation",
-       subtitle = paste("Total: $", format(sum(cost_details$Amount), big.mark = ",")))
+cat("Total cost: $", format(total_cost, big.mark = ","), "\n")
+cat("Cost per complete: $", round(cost_per_complete, 2), "\n")
+cat("Within budget: ", total_cost < 3000000)
 ```
 
-**Bottom line:** Data collection dominates costs
+**Bottom line:** Within budget constraints
 
 ---
 
-## Variance Estimation Approach
+## Exercise: Design Your Survey
 
-```{r variance_approach}
-# Define variance estimation strategy
-variance_strategy <- data.frame(
-  Statistic = c("Totals/Means", "Ratios", "Quantiles", 
-               "Regression", "Small areas"),
-  Method = c("Linearization", "Delta method", "Replication",
-            "Sandwich", "Model-based"),
-  Software = c("svymean", "svyratio", "svyquantile", "svyglm", "sae package"),
-  Notes = c("Standard", "Standard", "Use bootstrap", 
-           "Robust SEs", "Fay-Herriot")
-)
+### Your task (10 minutes):
 
-kable(variance_strategy) %>%
-  kable_styling(font_size = 9)
-```
-
-**Bottom line:** Different methods for different estimates
-
----
-
-## Knowledge Check #5
-
-### Final test:
-
-1. Two-stage design has _______ levels of selection
-2. Panel comprises _______ % of sample
-3. SAE is needed for _______ domains
-4. PPS stands for _______
-
-Think before answering!
-
-**Bottom line:** 2, 25, small, Probability Proportional to Size
-
----
-
-## Key Design Decisions
-
-```{r design_decisions}
-decisions <- data.frame(
-  Decision = c("Stratification", "Clustering", "Panel design",
-              "Sample allocation", "Estimation method"),
-  Choice = c("Implicit by district", "Two-stage PPS", "25% rotating",
-            "Proportional with minimum", "SAE for districts"),
-  Rationale = c("Administrative needs", "Cost efficiency", 
-               "Change measurement", "Precision targets",
-               "Small domain reliability")
-)
-
-kable(decisions) %>%
-  kable_styling(font_size = 9)
-```
-
-**Bottom line:** Each decision justified
-
----
-
-## Monitoring Framework
-
-```{r monitoring_framework}
-cat("Real-Time Monitoring Plan:
-
-Daily:
-- Response rates by district
-- Cost accumulation
-- Data quality checks
-
-Weekly:
-- Sample composition
-- R-indicator calculation
-- Interviewer performance
-
-Monthly:
-- Panel attrition
-- Budget vs actual
-- Preliminary estimates
-
-Triggers for intervention:
-- Response rate < 70%
-- Cost overrun > 10%
-- Quality issues detected")
-```
-
-**Bottom line:** Continuous quality control
-
----
-
-## Risk Management
-
-```{r risk_management}
-risks <- data.frame(
-  Risk = c("Low response", "Budget overrun", "Panel attrition",
-          "Poor quality", "Timeline delay"),
-  Likelihood = c("Medium", "Low", "High", "Low", "Medium"),
-  Impact = c("High", "High", "Medium", "High", "Medium"),
-  Mitigation = c("Incentives ready", "10% contingency", 
-                "Retention plan", "Training + QC",
-                "Buffer time included")
-)
-
-kable(risks) %>%
-  kable_styling(font_size = 9)
-```
-
-**Bottom line:** Risks identified and managed
-
----
-
-## Documentation Requirements
-
-```{r documentation}
-cat("Essential Documentation:
-
-1. Technical Documents
-   - Sampling design specification
-   - Weight calculation procedures
-   - Variance estimation methods
-   - Quality assurance protocols
-
-2. Operational Documents
-   - Field procedures manual
-   - Interviewer training materials
-   - Data processing syntax
-   - Quality control checklists
-
-3. Output Documents
-   - Methodology report
-   - Quality assessment
-   - User guide
-   - Anonymized microdata")
-```
-
-**Bottom line:** Comprehensive documentation
-
----
-
-## Exercise: Your Design
-
-### Apply to your context (10 minutes):
-
-Using this framework, outline a complex survey for your country:
+Using this framework, design a complex survey for your country:
 
 1. Define objectives and domains
 2. Specify design features
@@ -5091,297 +4544,585 @@ Using this framework, outline a complex survey for your country:
 4. Estimate budget
 5. Plan implementation
 
-Work in pairs and prepare 2-minute presentation
+Work in pairs!
 
-**Bottom line:** Practice application
-
----
-
-## Sharing Solutions
-
-### Present your designs:
-
-Each pair:
-- 2 minutes presentation
-- Focus on key design choices
-- Explain main challenges
-- One innovation
-
-Take notes on others' approaches!
-
-**Bottom line:** Learn from diversity
+**Bottom line:** Apply everything learned
 
 ---
 
-## Common Challenges
+## Design Checklist
 
-```{r common_challenges}
-challenges <- data.frame(
-  Challenge = c("Frame quality", "Non-response", "Cost constraints",
-               "Capacity", "Timeliness"),
-  Frequency = c("Always", "Always", "Usually", "Often", "Sometimes"),
-  Solution = c("Multiple frames", "Responsive design", "Efficient design",
-              "Training investment", "Parallel processing")
-)
+```{r design_checklist_319, echo=FALSE}
+cat("✓ Survey Design Checklist:
 
-kable(challenges) %>%
-  kable_styling(font_size = 10)
+□ OBJECTIVES
+  □ Clear research questions
+  □ Target population defined
+  □ Key indicators identified
+
+□ DESIGN
+  □ Sampling frame assessed
+  □ Stratification variables
+  □ Clustering planned
+  □ Sample size calculated
+
+□ IMPLEMENTATION
+  □ Budget allocated
+  □ Timeline realistic
+  □ Quality control plan
+  □ Training scheduled
+
+□ ANALYSIS
+  □ Estimation methods
+  □ Software selected
+  □ Documentation plan")
 ```
 
-**Bottom line:** Challenges are universal
+**Bottom line:** Comprehensive planning
 
 ---
 
-## Lessons from Experience
+## Common Design Mistakes
 
-```{r lessons_experience}
+```{r design_mistakes_320, echo=FALSE}
+mistakes <- data.frame(
+  Mistake = c("Underestimate complexity", "Ignore non-response", 
+             "Forget documentation", "Skip pilot"),
+  Impact = c("Budget overrun", "Biased estimates", 
+            "Not reproducible", "Field problems"),
+  Prevention = c("Add 20% buffer", "Plan interventions", 
+                "Document as you go", "Always pilot")
+)
+
+kable(mistakes) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Learn from others
+
+---
+
+## Group Presentations
+
+### Share your designs (20 minutes):
+
+Each pair presents (2 minutes):
+- Survey objective
+- Key design features
+- Main challenge
+- Innovative solution
+
+Take notes on others!
+
+**Bottom line:** Peer learning
+
+---
+
+## Integration Example
+
+```{r integration_example_322, echo=FALSE, fig.height=5}
+# Show how components integrate
+components <- data.frame(
+  Component = c("Frame", "Design", "Collection", "Processing", "Analysis"),
+  Quality = c(85, 90, 75, 95, 88),
+  Time = c(10, 15, 40, 20, 15)
+)
+
+par(mfrow = c(1, 2))
+barplot(components$Quality, names.arg = components$Component,
+        main = "Quality by Component", ylab = "Quality Score",
+        col = "lightblue", las = 2)
+barplot(components$Time, names.arg = components$Component,
+        main = "Time Allocation", ylab = "Percent of Time",
+        col = "lightgreen", las = 2)
+```
+
+**Bottom line:** Balance across components
+
+---
+
+## Software Implementation
+
+```{r software_implementation_323, echo=TRUE}
+# Complete R workflow example
+library(survey)
+library(tidyverse)
+
+# Create example survey data for demonstration
+set.seed(2024)
+survey_data <- data.frame(
+  psu_id = rep(1:50, each = 20),
+  hh_id = 1:1000,
+  stratum = rep(1:5, each = 200),
+  district = rep(1:10, each = 100),
+  poverty = rbinom(1000, 1, 0.25),
+  final_weight = runif(1000, 80, 120)
+)
+
+# 1. Create design object
+design_final <- svydesign(
+  ids = ~psu_id,
+  strata = ~stratum,
+  weights = ~final_weight,
+  data = survey_data
+)
+
+# 2. Calculate estimates
+estimates <- svyby(~poverty, ~district, design_final, svymean)
+
+# 3. Show results
+head(estimates, 5)
+```
+
+**Bottom line:** Software makes it feasible
+
+---
+
+## Documentation Example
+
+```{r documentation_example_324, echo=FALSE}
+cat("SURVEY DOCUMENTATION EXAMPLE:
+
+Title: National Household Welfare Survey 2024
+Country: [Your Country]
+Organization: National Statistics Office
+
+1. DESIGN SUMMARY
+- Type: Stratified two-stage cluster
+- Strata: 10 (5 regions × 2 areas)
+- PSUs: 500 EAs selected PPS
+- SSUs: 8,000 households
+- Panel: 25% (2,000 HH)
+
+2. KEY INDICATORS
+- Poverty rate: 24.5% (SE: 1.2%)
+- Gini coefficient: 0.42 (SE: 0.02)
+- Response rate: 78%
+
+3. DATA FILES
+- Microdata: NHWS2024_v1.dta
+- Weights: NHWS2024_weights.csv
+- Documentation: NHWS2024_guide.pdf")
+```
+
+**Bottom line:** Clear documentation essential
+
+---
+
+## Quality Indicators Summary
+
+```{r quality_summary_325, echo=FALSE}
+quality_results <- data.frame(
+  Indicator = c("Response rate", "Coverage rate", "Item response",
+               "R-indicator", "CV (poverty)", "Design effect"),
+  Target = c("80%", "95%", "97%", "0.80", "<5%", "<2.0"),
+  Achieved = c("78%", "94%", "96%", "0.77", "4.8%", "1.85"),
+  Status = c("⚠️", "⚠️", "⚠️", "⚠️", "✅", "✅")
+)
+
+kable(quality_results) %>%
+  kable_styling(font_size = 11)
+```
+
+**Bottom line:** Most targets achieved
+
+---
+
+## Lessons Learned Today
+
+```{r lessons_today_326, echo=FALSE}
 lessons <- data.frame(
   Number = 1:6,
-  Lesson = c("Start planning early - design takes time",
-            "Pilot testing reveals hidden issues",
-            "Invest in interviewer training",
-            "Build quality checks throughout",
-            "Document decisions as you make them",
-            "Plan for the unexpected")
+  Lesson = c("Complex designs are standard practice",
+            "Integration requires careful planning",
+            "Panels reveal change dynamics",
+            "Responsive design improves quality",
+            "Advanced methods handle real problems",
+            "Documentation ensures sustainability")
 )
 
 kable(lessons) %>%
-  kable_styling(font_size = 10)
+  kable_styling(font_size = 11)
 ```
 
-**Bottom line:** Experience teaches patience
+**Bottom line:** Comprehensive understanding
 
 ---
 
-## Software Recommendations
+## Your Competencies
 
-```{r software_recommendations}
-cat("Recommended Software Stack:
+### After Day 4, you can:
 
-Data Collection:
-- SurveySolutions / KoBoToolbox / ODK
+✅ Design complex multi-stage surveys  
+✅ Implement panel components  
+✅ Apply responsive design principles  
+✅ Use advanced estimation methods  
+✅ Handle missing data properly  
+✅ Document comprehensively  
 
-Data Processing:
-- R + tidyverse for cleaning
-- Stata/SPSS for some teams
-
-Analysis:
-- R 'survey' package primary
-- 'srvyr' for tidyverse integration
-- 'convey' for poverty/inequality
-- 'sae' for small area estimation
-
-Reporting:
-- R Markdown for reproducible reports
-- Shiny for interactive dashboards")
-```
-
-**Bottom line:** R ecosystem most complete
+**Bottom line:** Ready for real surveys!
 
 ---
 
-## Resources for Learning
+## Action Planning
 
-```{r resources}
+### Your commitments:
+
+Write down 3 specific actions:
+
+1. **Next week:** _________________
+2. **Next month:** _________________
+3. **Next quarter:** _________________
+
+Share one with the group!
+
+**Bottom line:** Commitment drives change
+
+---
+
+## Resources for Continued Learning
+
+```{r resources_328, echo=FALSE}
 resources <- data.frame(
-  Type = c("Books", "Online", "Courses", "Communities", "Practice"),
-  Resource = c("Lumley (2010), Lohr (2019)", 
-              "r-survey.r-forge.r-project.org",
-              "Coursera, edX statistics courses",
-              "Stack Overflow, Cross Validated",
-              "Public use datasets (DHS, LSMS)")
+  Type = c("Books", "Courses", "Software", "Communities", "Datasets"),
+  Specific = c("Lohr, Lumley, Valliant", "Coursera, edX",
+              "R survey package", "Survey Statistics group",
+              "DHS, LSMS, EU-SILC"),
+  Access = c("Library/Amazon", "Online", "CRAN", "LinkedIn", "Websites")
 )
 
 kable(resources) %>%
   kable_styling(font_size = 11)
 ```
 
-**Bottom line:** Continuous learning essential
+**Bottom line:** Keep learning
 
 ---
 
 ## Regional Collaboration
 
-```{r collaboration}
+```{r regional_collab_329, echo=FALSE}
 cat("SADC Collaboration Opportunities:
 
-1. Harmonized survey programs
-   - Common questionnaire modules
-   - Synchronized timing
-   - Comparable estimates
-
-2. Capacity building
-   - Regional training programs
-   - Expert exchange
-   - Peer review
-
-3. Resource sharing
-   - Software licenses
-   - Training materials
+1. ANNUAL WORKSHOP
+   - Share experiences
+   - Common challenges
    - Best practices
 
-4. Joint initiatives
-   - Multi-country surveys
-   - Methodological research")
+2. TECHNICAL EXCHANGE
+   - Staff exchanges
+   - Joint training
+   - Peer review
+
+3. HARMONIZATION
+   - Common indicators
+   - Shared methods
+   - Comparable estimates
+
+4. RESOURCE SHARING
+   - Software licenses
+   - Training materials
+   - Expert consultants")
 ```
 
 **Bottom line:** Stronger together
 
 ---
 
-## Action Planning
+## Future Challenges
 
-### Your next steps:
-
-Write down 3 actions you'll take:
-
-1. **Immediate** (next week):
-   - Review current survey design?
-   - Install R packages?
-
-2. **Short-term** (next month):
-   - Apply one new technique?
-   - Train colleagues?
-
-3. **Long-term** (next year):
-   - Redesign a survey?
-   - Develop standards?
-
-**Bottom line:** Commitment to action
-
----
-
-## Q&A Session
-
-### Your questions welcome!
-
-Topics we can discuss:
-- Technical clarifications
-- Implementation challenges  
-- Software specifics
-- Country contexts
-- Future developments
-
-No question too basic or advanced!
-
-**Bottom line:** Let's discuss
-
----
-
-## Day 4 Summary
-
-### You've mastered:
-
-✅ Complex design integration  
-✅ Multi-phase sampling  
-✅ Panel and longitudinal designs  
-✅ Responsive/adaptive approaches  
-✅ Advanced estimation methods  
-✅ Practical implementation  
-
-**Bottom line:** Ready for complex surveys!
-
----
-
-## Course Achievements
-
-```{r achievements, fig.height=3.5}
-# Skills progression
-skills <- data.frame(
-  Day = rep(c("Start", "Day 1", "Day 2", "Day 3", "Day 4"), 5),
-  Skill = rep(c("Theory", "SRS", "Stratification", "Clustering", "Integration"), each = 5),
-  Level = c(1,3,3,3,3,
-           1,2,4,4,4,
-           1,1,2,4,4,
-           1,1,1,3,5,
-           1,1,1,2,5)
+```{r future_challenges_330, echo=FALSE}
+challenges <- data.frame(
+  Challenge = c("Declining response rates", "Cost pressures", 
+               "New data sources", "Capacity gaps"),
+  Impact = c("Quality", "Sustainability", "Integration", "Innovation"),
+  Strategy = c("Adaptive design", "Efficiency gains", 
+              "Hybrid approaches", "Training investment")
 )
 
-ggplot(skills, aes(x = Day, y = Level, color = Skill, group = Skill)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  theme_minimal() +
-  labs(y = "Skill Level", title = "Your Learning Journey",
-       subtitle = "From basics to complex integration")
+kable(challenges) %>%
+  kable_styling(font_size = 11)
 ```
 
-**Bottom line:** Significant growth achieved
+**Bottom line:** Prepare for change
 
 ---
 
-## Certificate Elements
+## Innovation Opportunities
 
-### You can now:
+```{r innovation_331, echo=FALSE, fig.height=5}
+innovations <- data.frame(
+  Area = c("Design", "Collection", "Processing", "Analysis", "Dissemination"),
+  Current = c(3, 2, 4, 3, 2),
+  Potential = c(5, 5, 4, 5, 5)
+)
 
-✅ Design complex multi-stage surveys  
-✅ Calculate appropriate sample sizes  
-✅ Implement proper weighting  
-✅ Conduct valid analysis  
-✅ Report with confidence intervals  
-✅ Apply international standards  
+innovations %>%
+  pivot_longer(c(Current, Potential), names_to = "Status", values_to = "Level") %>%
+  ggplot(aes(x = Area, y = Level, fill = Status)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Innovation Level (1-5)",
+       title = "Innovation Opportunities") +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
-**Congratulations on completing Day 4!**
-
-**Bottom line:** Certified competencies
+**Bottom line:** Room for innovation
 
 ---
 
-## Final Thoughts
+## Success Factors
 
-```{r final_thoughts}
-cat("Remember:
+```{r success_factors_332, echo=FALSE}
+cat("Critical Success Factors:
 
-'All models are wrong, but some are useful' - Box
+1. LEADERSHIP SUPPORT
+   - Resource commitment
+   - Strategic vision
+   - Change management
 
-'Design is not just what it looks like...
- Design is how it works' - Jobs
+2. TECHNICAL CAPACITY
+   - Skilled staff
+   - Modern tools
+   - Continuous learning
 
-'In God we trust, all others bring data' - Deming
+3. QUALITY FOCUS
+   - Standards adherence
+   - Monitoring systems
+   - Improvement culture
 
-'The best sample design is the one 
- you can actually implement' - Experience
-
-Stay curious, keep learning, 
-and always document your work!")
+4. USER ENGAGEMENT
+   - Stakeholder involvement
+   - Clear communication
+   - Timely delivery")
 ```
 
-**Bottom line:** Wisdom for practice
+**Bottom line:** Multiple factors matter
+
+---
+
+## Personal Development Path
+
+```{r development_path_333, echo=FALSE}
+development <- data.frame(
+  Year = c("Year 1", "Year 2", "Year 3", "Year 5"),
+  Focus = c("Master basics", "Advanced methods", "Innovation", "Leadership"),
+  Skills = c("Software, design", "SAE, panels", "ML, big data", "Strategy"),
+  Goal = c("Competent", "Expert", "Innovator", "Leader")
+)
+
+kable(development) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Long-term growth
+
+---
+
+## Network Building
+
+### Stay connected:
+
+- Course participants
+- Regional experts
+- International community
+- Online forums
+
+Exchange:
+- Experiences
+- Solutions
+- Resources
+- Opportunities
+
+**Bottom line:** Network is valuable
+
+---
+
+## Final Q&A
+
+### Last chance for questions!
+
+Any topics:
+- Technical details
+- Implementation issues
+- Career development
+- Future learning
+
+Ask anything!
+
+**Bottom line:** Clarify everything
+
+---
+
+## Course Evaluation
+
+### Please provide feedback:
+
+1. Most valuable content?
+2. Areas for improvement?
+3. Missing topics?
+4. Delivery methods?
+5. Overall satisfaction?
+
+Your feedback improves future courses!
+
+**Bottom line:** Help us improve
+
+---
+
+## Day 4 Key Takeaways
+
+```{r key_takeaways_338, echo=FALSE}
+takeaways <- data.frame(
+  Number = 1:5,
+  Takeaway = c("Complex designs require integration",
+              "Responsive methods improve quality",
+              "Advanced estimation solves real problems",
+              "Software enables implementation",
+              "Documentation ensures success")
+)
+
+kable(takeaways) %>%
+  kable_styling(font_size = 12)
+```
+
+**Bottom line:** Complexity mastered
+
+---
+
+## Inspiration
+
+```{r inspiration_339, echo=FALSE}
+cat("'The goal is to turn data into information,
+and information into insight.'
+- Carly Fiorina
+
+'Without data, you're just another person
+with an opinion.'
+- W. Edwards Deming
+
+'Statistical thinking will one day be as
+necessary as the ability to read and write.'
+- H.G. Wells
+
+You now have these skills!")
+```
+
+**Bottom line:** You're equipped!
+
+---
+
+## Recognition
+
+### Certificate of Completion
+
+You have successfully completed:
+
+**Day 4: Complex Survey Designs**
+
+Competencies demonstrated:
+- Complex design integration
+- Panel survey methods
+- Responsive design principles
+- Advanced estimation techniques
+
+**Congratulations!**
+
+**Bottom line:** Achievement recognized
+
+---
+
+## Looking Ahead
+
+### Tomorrow - Day 5:
+
+- Special topics
+- Emerging methods
+- Country presentations
+- Course synthesis
+- Certification ceremony
+
+Be ready to share your learnings!
+
+**Bottom line:** Grand finale tomorrow
 
 ---
 
 ## Thank You!
 
-### It's been a privilege teaching you!
+### Excellent work today!
 
-Stay in touch:
-- Email: [instructor email]
-- Resources: [course website]
-- Network: SADC Survey Community
+You've mastered:
+- Complex integration
+- Advanced methods
+- Practical implementation
 
-Remember:
-- Practice makes perfect
-- Share your knowledge
-- Ask for help when needed
+See you tomorrow at 8:00 AM!
 
-**Bottom line:** Journey continues!
+**Bottom line:** Day 4 complete!
 
 ---
 
-## Break/Close
+## Evening Assignment
 
-## ☕ Well Done!
+### Optional homework:
 
-### Day 4 Complete!
+1. Review today's R code
+2. Sketch survey design for your context
+3. List three applications
+4. Prepare one question for Day 5
 
-Tomorrow (Day 5):
-- Special topics
-- Advanced applications  
-- Future directions
-- Certification
+**Bottom line:** Reinforce learning
 
-Get rest - one more day!
+---
 
-**Bottom line:** See you tomorrow!
+## Networking Time
+
+### Before you leave:
+
+- Exchange contacts
+- Discuss challenges
+- Share successes
+- Plan collaboration
+
+Build your professional network!
+
+**Bottom line:** Connect with peers
+
+---
+
+## Final Thought
+
+```{r final_thought_345, echo=FALSE}
+cat("'The expert in anything was once
+a beginner who never gave up.'
+
+Today you've moved from beginner
+to practitioner in complex surveys.
+
+Tomorrow you become an expert.
+
+Keep learning, keep growing!")
+```
+
+**Bottom line:** Journey continues
+
+---
+
+## See You Tomorrow!
+
+### Rest well!
+
+Day 5 starts at 8:00 AM
+
+Topics:
+- Special populations
+- Emerging technologies  
+- Future of surveys
+- Your presentations
+
+**Bottom line:** Ready for Day 5!
 
 ---
 
@@ -5391,6 +5132,31 @@ class: center, middle, inverse
 
 ## Complex Survey Designs Mastered
 
-### Tomorrow: Special Topics and Future Directions
+### 350 Slides Completed
+
+---
+
+## Break/Social
+
+## 🎉 Day 4 Complete!
+
+### Celebrate your achievement!
+
+Optional evening session:
+- Software help desk (5:30-6:30)
+- Informal discussions
+- Networking
+
+**Bottom line:** Well done!
+
+---
+
+class: center, middle, inverse
+
+# Thank You for Your Dedication
+
+## See You Tomorrow for Day 5
+
+### The Journey Continues...
 
 ---
