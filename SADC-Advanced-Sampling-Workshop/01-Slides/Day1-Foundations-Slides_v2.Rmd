@@ -1,0 +1,1844 @@
+---
+title: "Advanced Sampling Methods for Household Surveys"
+subtitle: "Day 1: Harry's New Challenge - Foundations of Complex Surveys"
+author: "Dr. Endri Raço"
+institute: "SADC Regional Training Workshop"
+date: "2025"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: ["default", "metropolis", "metropolis-fonts"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+---
+
+```{r setup, include=FALSE}
+# Load required libraries for the workshop
+library(tidyverse)
+library(survey)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(ggplot2)
+library(sf)
+library(plotly)
+library(DT)
+
+# Set global options
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 10, fig.height = 6, fig.align = 'center')
+
+# Set theme for all plots
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+class: center, middle
+
+# Welcome to Advanced Sampling Methods
+## For Household Surveys
+
+<img src="https://www.sadc.int/sites/default/files/2021-08/SADC_logo.png" width="200">
+
+### Southern African Development Community
+### Regional Training Workshop
+### Dr. Endri Raço
+### 2025
+
+---
+
+# About Your Instructor
+
+.pull-left[
+## Dr. Endri Raço
+
+- **Ph.D. in Statistics and Operations Research**
+- **14+ years** training government statistical agencies
+- **Expert in:** 
+  - Complex survey design
+  - Sampling methodology
+  - Statistical software (R, Python, STATA)
+  
+- **Published author** of statistical textbooks
+- **Former advisor** to INSTAT Albania & Kosovo Agency of Statistics
+]
+
+.pull-right[
+## My Philosophy
+
+> "Statistics is not just about numbers—it's about understanding the stories data tells us about people's lives"
+
+- **Practical, hands-on learning**
+- **Case-study approach**
+- **Real-world applications**
+- **Collaborative problem-solving**
+]
+
+---
+
+# Workshop Objectives
+
+## By the end of this week, you will:
+
+.large[
+1. **Master** complex survey designs for household surveys
+
+2. **Handle** imperfect sampling frames with confidence
+
+3. **Calculate** precise variance estimates for complex designs
+
+4. **Implement** advanced weighting and calibration techniques
+
+5. **Apply** modern tools (R, GIS, AI) to sampling challenges
+
+6. **Design** surveys for challenging environments
+]
+
+.center[
+### Your success is our priority!
+]
+
+---
+
+# Your 5-Day Journey
+
+```{r journey_viz, echo=FALSE, fig.height=5}
+# Create journey visualization
+journey <- data.frame(
+  Day = 1:5,
+  Title = c("Foundations", "Imperfect Frames", "Variance & Error", 
+            "Specialized Methods", "Integration & Future"),
+  Harry_Challenge = c("New Survey Design", "Dirty Data", "Precision Questions",
+                      "Special Populations", "Final Presentation"),
+  Complexity = c(20, 40, 60, 80, 100)
+)
+
+ggplot(journey, aes(x = Day, y = Complexity)) +
+  geom_line(size = 2, color = "#2E86AB") +
+  geom_point(size = 6, color = "#A23B72") +
+  geom_text(aes(label = Title), vjust = -1.5, size = 4, fontface = "bold") +
+  scale_x_continuous(breaks = 1:5, labels = paste("Day", 1:5)) +
+  scale_y_continuous(limits = c(0, 120)) +
+  labs(title = "Your Learning Journey",
+       subtitle = "Building complexity throughout the week",
+       x = "", y = "Complexity Level") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(face = "bold", size = 18))
+```
+
+---
+class: center, middle
+
+# Meet Harry
+## Your Companion This Week
+
+.large[
+Harry is a statistician at the National Statistical Office
+
+He's been tasked with designing a **National Multi-Purpose Household Survey**
+
+Together, we'll help Harry overcome real challenges you face daily
+]
+
+---
+
+# Harry's Story - Day 1
+
+.pull-left[
+## The Challenge
+
+Harry arrives at work to find an urgent email:
+
+> "Harry, we need you to design our new National Multi-Purpose Household Survey. It must cover:
+> - Household expenditure
+> - Labor force participation  
+> - Health indicators
+> - Education access
+> 
+> Budget is limited. Timeline is tight. Accuracy is critical.
+> 
+> Good luck!"
+]
+
+.pull-right[
+## Harry's Thoughts
+
+💭 "Where do I even begin?"
+
+💭 "How do I ensure representativeness?"
+
+💭 "What sampling design will be most efficient?"
+
+💭 "How do I handle our budget constraints?"
+
+**Let's help Harry succeed!**
+]
+
+---
+
+# Today's Learning Objectives
+
+## Day 1: Foundations of Complex Surveys
+
+By the end of today, you will be able to:
+
+1. **Review** fundamental sampling concepts with a critical eye
+
+2. **Identify** when advanced techniques are necessary
+
+3. **Design** stratified and clustered samples
+
+4. **Calculate** design effects and effective sample sizes
+
+5. **Understand** the Total Survey Error framework
+
+6. **Create** Harry's initial sampling design
+
+---
+
+# Why Advanced Sampling Methods?
+
+```{r comparison_table, echo=FALSE}
+# Create comparison table
+comparison <- data.frame(
+  Aspect = c("Cost", "Time", "Precision", "Coverage", "Complexity"),
+  Simple_Random = c("Very High", "Very Long", "High", "Complete", "Low"),
+  Advanced_Methods = c("Moderate", "Shorter", "Good", "Representative", "Higher"),
+  Benefit = c("50-70% reduction", "30-50% faster", "Acceptable trade-off", 
+              "Targeted efficiency", "Worth the effort")
+)
+
+kable(comparison, 
+      col.names = c("Aspect", "Simple Random Sample", "Advanced Methods", "Benefit"),
+      caption = "Why We Need Advanced Methods") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE) %>%
+  column_spec(4, bold = TRUE, color = "white", background = "#2E86AB")
+```
+
+---
+
+# Quick Review: Basic Sampling Concepts
+
+## Population vs Sample
+
+```{r pop_vs_sample, echo=FALSE, fig.height=5}
+# Create visualization of population vs sample
+set.seed(2025)
+pop_data <- expand.grid(x = 1:20, y = 1:10)
+pop_data$type <- "Population"
+sample_indices <- sample(1:nrow(pop_data), 40)
+pop_data$type[sample_indices] <- "Sample"
+
+ggplot(pop_data, aes(x = x, y = y, color = type)) +
+  geom_point(size = 4, alpha = 0.8) +
+  scale_color_manual(values = c("Population" = "lightgray", "Sample" = "#A23B72")) +
+  labs(title = "Population vs Sample",
+       subtitle = "We study a subset to understand the whole",
+       color = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(face = "bold", size = 16),
+        plot.subtitle = element_text(size = 12))
+```
+
+**Remember:** Every person in your sample represents many in the population!
+
+---
+
+# The Power of Probability Sampling
+
+## Key Principle
+
+.center[
+### Every unit in the population must have a 
+### **known, non-zero probability** of selection
+]
+
+.pull-left[
+## This enables us to:
+
+✅ Calculate unbiased estimates
+
+✅ Measure precision 
+
+✅ Make valid inferences
+
+✅ Quantify uncertainty
+]
+
+.pull-right[
+## Common Methods:
+- Simple Random Sampling
+- Systematic Sampling
+- Stratified Sampling
+- Cluster Sampling
+- Multi-stage Sampling
+]
+
+---
+
+# Simple Random Sampling: The Foundation
+
+## Definition
+Every possible sample of size $n$ has equal probability of selection
+
+## In R:
+```{r srs_example}
+# Create a population frame
+population <- data.frame(
+  household_id = 1:10000,
+  region = sample(c("North", "South", "East", "West"), 10000, replace = TRUE),
+  urban_rural = sample(c("Urban", "Rural"), 10000, replace = TRUE, prob = c(0.4, 0.6))
+)
+
+# Simple random sample
+srs_sample <- population %>%
+  slice_sample(n = 500)
+
+# Check sample properties
+table(srs_sample$region)
+```
+
+---
+
+# Systematic Sampling: Practical Efficiency
+
+## The Process
+
+```{r systematic_viz, echo=FALSE, fig.height=3.5}
+# Visualize systematic sampling
+sys_data <- data.frame(
+  position = 1:50,
+  selected = rep(c("Not Selected", rep("Not Selected", 4), "Selected"), length.out = 50)
+)
+sys_data$selected[seq(3, 50, by = 5)] <- "Selected"
+
+ggplot(sys_data, aes(x = position, y = 1, fill = selected)) +
+  geom_tile(color = "white", size = 1) +
+  scale_fill_manual(values = c("Not Selected" = "lightgray", "Selected" = "#A23B72")) +
+  labs(title = "Systematic Sampling: Every kth Unit",
+       subtitle = "Interval k = 5, Random start = 3",
+       fill = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(face = "bold", size = 14))
+```
+
+.pull-left[
+## Advantages:
+- ✅ Easy field implementation
+- ✅ Spreads sample evenly
+- ✅ Often more precise than SRS
+]
+
+.pull-right[
+## Watch out for:
+- ⚠️ Hidden periodicity in frame
+- ⚠️ Patterns that match interval
+] 
+
+---
+
+# When Simple Methods Aren't Enough
+
+## Harry's Realization
+
+.pull-left[
+### His Country's Reality:
+
+- **80% Rural**, 20% Urban
+- Rural: **scattered**, expensive
+- Urban: **concentrated**, accessible
+- **Budget:** Limited resources
+- **Need:** Precise estimates for both
+]
+
+.pull-right[
+### Problems with SRS:
+
+❌ Unpredictable urban/rural mix
+
+❌ Scattered households everywhere
+
+❌ Explosive travel costs
+
+❌ Poor urban precision
+
+**Harry needs a better approach!**
+]
+
+---
+
+# Enter: Stratified Sampling
+
+## The Concept
+Divide population into **homogeneous groups** (strata), sample from each
+
+```{r stratified_viz, echo=FALSE, fig.height=4.5}
+# Create stratified sampling visualization
+set.seed(2025)
+strat_data <- data.frame(
+  value = c(rnorm(1000, 50, 5), rnorm(500, 70, 3), rnorm(300, 30, 8)),
+  stratum = factor(rep(c("Urban High Income", "Urban Low Income", "Rural"), 
+                       c(1000, 500, 300)))
+)
+
+ggplot(strat_data, aes(x = value, fill = stratum)) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+  scale_fill_manual(values = c("#2E86AB", "#A23B72", "#F18F01")) +
+  labs(title = "Stratified Sampling: Divide and Conquer",
+       subtitle = "Sample separately from each stratum",
+       x = "Household Income (thousands)",
+       y = "Frequency",
+       fill = "Stratum") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+---
+
+# Stratification: Harry's Solution
+
+```{r harry_strata, echo=TRUE}
+# Define Harry's strata
+strata_design <- data.frame(
+  Stratum = c("Urban-Capital", "Urban-Other", 
+              "Rural-North", "Rural-South"),
+  Population = c(500000, 300000, 800000, 600000),
+  Sample = c(400, 300, 500, 400)
+)
+
+# Calculate sampling fractions
+strata_design$Sampling_Fraction <- 
+  round(strata_design$Sample / strata_design$Population, 6)
+
+kable(strata_design, digits = 6,
+      col.names = c("Stratum", "Population", 
+                    "Sample Size", "Sampling Fraction")) %>%
+  kable_styling(bootstrap_options = "striped",
+                font_size = 14)
+```
+
+### Key Characteristics by Stratum:
+- **Urban-Capital:** High income, service economy
+- **Urban-Other:** Medium income, mixed economy  
+- **Rural-North:** Agriculture, poor infrastructure
+- **Rural-South:** Agriculture, better access
+
+---
+
+# Benefits of Stratification
+
+## Why Harry Loves Stratification:
+
+### 1. **Guaranteed Representation**
+Each important domain gets adequate sample
+
+### 2. **Increased Precision**
+```{r variance_reduction, echo=FALSE}
+# Show variance reduction formula
+cat("Variance(Stratified) < Variance(SRS)")
+cat("\nReduction proportional to between-strata variance")
+```
+
+### 3. **Administrative Convenience**
+Different teams can work different strata
+
+### 4. **Domain Estimates**
+Direct estimates for each stratum
+
+### 5. **Cost Optimization**
+Allocate more sample to cheaper/more variable strata
+
+---
+
+# Quick Interactive Exercise
+
+## Your Turn! (2 minutes)
+
+Think about your country's last household survey:
+
+1. **What stratification variables were used?**
+
+2. **Why were they chosen?**
+
+3. **What challenges did you face?**
+
+.center[
+### Share with your neighbor!
+
+*We'll discuss interesting cases in 2 minutes*
+]
+
+```{r countdown_timer, echo=FALSE, eval=FALSE}
+# This would show a countdown timer in the actual presentation
+countdown::countdown(minutes = 2, seconds = 0)
+```
+
+---
+
+# The Reality: Clusters Save Money
+
+## Harry's New Problem
+
+Even with stratification, households are scattered!
+
+```{r cluster_need, echo=FALSE, fig.height=4}
+# Visualize scattered vs clustered selection
+set.seed(2025)
+scattered <- data.frame(
+  x = runif(30, 0, 10),
+  y = runif(30, 0, 10),
+  type = "Without Clustering"
+)
+
+clustered <- data.frame(
+  x = c(rnorm(10, 2, 0.3), rnorm(10, 7, 0.3), rnorm(10, 5, 0.3)),
+  y = c(rnorm(10, 2, 0.3), rnorm(10, 7, 0.3), rnorm(10, 5, 0.3)),
+  type = "With Clustering"
+)
+
+combined <- rbind(scattered, clustered)
+
+ggplot(combined, aes(x = x, y = y)) +
+  geom_point(size = 3, color = "#A23B72") +
+  facet_wrap(~type) +
+  labs(title = "Why We Need Cluster Sampling",
+       subtitle = "Clustering reduces travel time and costs") +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "bold", size = 12))
+```
+
+**Cost savings: 50-70%!** But there's a price...
+
+---
+
+# Next: Understanding Cluster Sampling
+
+## To be continued...
+
+In the next set of slides, we'll explore:
+
+- Design effects and effective sample size
+- Multi-stage sampling designs  
+- The Total Survey Error Framework
+- Harry's complete Day 1 solution
+
+### But first, let's make sure everyone is following!
+
+## Questions so far? 
+
+.center[
+### This is YOUR workshop
+### Your questions make it better!
+]
+
+---
+
+# Cluster Sampling: The Cost-Saver
+
+## What is a Cluster?
+
+A **cluster** is a natural grouping of sampling units:
+- Villages in rural areas
+- City blocks in urban areas  
+- Schools for education surveys
+- Health facilities for patient surveys
+
+```{r cluster_definition, echo=FALSE, fig.height=3.5}
+# Visualize cluster concept
+set.seed(2025)
+cluster_map <- expand.grid(x = 1:10, y = 1:10)
+cluster_map$cluster <- rep(1:25, each = 4)
+selected_clusters <- sample(1:25, 5)
+cluster_map$selected <- cluster_map$cluster %in% selected_clusters
+
+ggplot(cluster_map, aes(x = x, y = y, color = factor(cluster), 
+                        shape = selected)) +
+  geom_point(size = 4) +
+  scale_shape_manual(values = c(1, 19)) +
+  labs(title = "Cluster Sampling: Select Groups, Not Individuals",
+       subtitle = "5 clusters selected from 25") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+---
+
+# Why Harry Needs Clusters
+
+## Cost Comparison for 1,600 Households
+
+```{r cost_comparison, echo=FALSE}
+costs <- data.frame(
+  Method = c("Simple Random", "Cluster (80×20)"),
+  Villages = c(800, 80),
+  Travel_Days = c(160, 20),
+  Fuel = c("$32,000", "$4,000"),
+  Staff_Days = c(320, 80),
+  Total = c("$96,000", "$28,000")
+)
+
+kable(costs, col.names = c("Method", "Villages", "Travel Days", 
+                           "Fuel", "Staff Days", "Total Cost")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12) %>%
+  row_spec(2, bold = TRUE, color = "white", background = "#2E86AB")
+```
+
+.pull-left[
+## Savings: 
+### 70% cost reduction!
+]
+
+.pull-right[
+## Trade-off:
+### Design effect reduces precision
+]
+
+---
+
+# The Price of Clustering: Design Effect
+
+## Households within clusters are similar!
+
+```{r clustering_effect, echo=FALSE, fig.height=4}
+# Show intra-cluster correlation
+set.seed(2025)
+cluster_data <- data.frame(
+  value = c(rnorm(20, 50, 2), rnorm(20, 65, 2), rnorm(20, 35, 2)),
+  cluster = factor(rep(1:3, each = 20)),
+  type = "Within Clusters"
+)
+
+random_data <- data.frame(
+  value = rnorm(60, 50, 10),
+  cluster = factor(sample(1:3, 60, replace = TRUE)),
+  type = "Random Sample"
+)
+
+combined <- rbind(cluster_data, random_data)
+
+ggplot(combined, aes(x = cluster, y = value, color = cluster)) +
+  geom_point(alpha = 0.6, position = position_jitter(width = 0.2)) +
+  facet_wrap(~type) +
+  labs(title = "The Clustering Effect",
+       subtitle = "Similar units cluster together, reducing information") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+---
+
+# Understanding Design Effect (DEFF)
+
+## The Formula
+
+.center[
+### DEFF = 1 + (m - 1) × ρ
+]
+
+Where:
+- **m** = cluster size (households per cluster)
+- **ρ** (rho) = intra-cluster correlation
+
+## What it means:
+
+If DEFF = 2, your sample of 1,600 gives information equivalent to only 800 independent observations!
+
+```{r deff_calculation, echo=TRUE}
+# Calculate design effect
+m <- 20  # cluster size
+rho <- 0.05  # typical ICC for income
+DEFF <- 1 + (m - 1) * rho
+cat("Design Effect:", DEFF)
+cat("\nEffective Sample Size:", 1600 / DEFF)
+```
+
+---
+
+# Harry Calculates His Design Effect
+
+```{r harry_deff_calc, echo=TRUE}
+# Harry's survey design parameters
+clusters <- 80
+cluster_size <- 20
+total_sample <- clusters * cluster_size
+
+# Different ICC values for different variables
+icc_values <- c(
+  income = 0.08,
+  education = 0.15,
+  health_access = 0.20,
+  household_size = 0.05
+)
+```
+
+```{r harry_deff_table, echo=FALSE}
+# Calculate DEFF for each
+deff_results <- data.frame(
+  Variable = names(icc_values),
+  ICC = icc_values,
+  DEFF = 1 + (cluster_size - 1) * icc_values,
+  Eff_n = round(total_sample / (1 + (cluster_size - 1) * icc_values))
+)
+
+kable(deff_results, 
+      col.names = c("Variable", "ICC", "DEFF", "Effective n"),
+      digits = 3) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 13)
+```
+
+**Key Finding:** Health access (ICC=0.20) reduces effective sample by 50%!
+
+---
+
+# The ICC: Measuring Similarity
+
+## Intra-Cluster Correlation (ρ)
+
+Measures how similar units are within clusters:
+- **ρ = 0**: No clustering effect (rare!)
+- **ρ = 0.01-0.05**: Weak clustering
+- **ρ = 0.05-0.15**: Moderate clustering  
+- **ρ > 0.15**: Strong clustering
+
+## Typical ICC Values in Household Surveys:
+
+.pull-left[
+**Lower ICC (0.01-0.05):**
+- Age distribution
+- Household size
+- Basic amenities
+]
+
+.pull-right[
+**Higher ICC (0.10-0.30):**
+- Income/wealth
+- Education level
+- Health behaviors
+- Language/ethnicity
+]
+
+---
+
+# Multi-Stage Sampling: Harry's Complete Design
+
+## Stage 1: Select Primary Sampling Units (PSUs)
+
+```{r multistage_stage1, echo=TRUE}
+# Stage 1: Select PSUs (districts/villages)
+PSU_frame <- data.frame(
+  PSU_ID = 1:500,
+  Stratum = sample(c("Urban", "Rural"), 500, 
+                   replace = TRUE, prob = c(0.2, 0.8)),
+  Households = round(runif(500, 100, 2000))
+)
+
+# Select PSUs with PPS (Probability Proportional to Size)
+n_PSU <- 50
+PSU_frame$prob <- PSU_frame$Households / sum(PSU_frame$Households)
+selected_PSUs <- sample(PSU_frame$PSU_ID, n_PSU, 
+                       prob = PSU_frame$prob)
+
+print(paste("Selected", n_PSU, "PSUs from", nrow(PSU_frame)))
+```
+
+---
+
+# Multi-Stage Sampling: Stage 2
+
+## Select Secondary Sampling Units (SSUs)
+
+```{r multistage_stage2, echo=TRUE}
+# Stage 2: Select households within PSUs
+households_per_PSU <- 20
+stage2_sample <- data.frame()
+
+# Show selection for first 3 PSUs
+for(psu in selected_PSUs[1:3]) {
+  psu_size <- PSU_frame$Households[PSU_frame$PSU_ID == psu]
+  interval <- floor(psu_size / households_per_PSU)
+  start <- sample(1:interval, 1)
+  selected_hh <- seq(start, psu_size, 
+                    by = interval)[1:households_per_PSU]
+  
+  stage2_sample <- rbind(stage2_sample,
+    data.frame(PSU = psu, HH_ID = selected_hh))
+}
+```
+
+```{r show_stage2, echo=FALSE}
+head(stage2_sample, 6)
+```
+
+---
+
+# Probability Proportional to Size (PPS)
+
+## Why PPS?
+
+Without PPS, small and large clusters have equal selection probability:
+
+```{r pps_visual, echo=FALSE, fig.height=4}
+# Visualize PPS vs Equal probability
+set.seed(2025)
+clusters_pps <- data.frame(
+  size = c(50, 200, 500, 1000, 150, 300, 80, 600),
+  method = "PPS",
+  prob = c(50, 200, 500, 1000, 150, 300, 80, 600) / 
+         sum(c(50, 200, 500, 1000, 150, 300, 80, 600))
+)
+
+clusters_equal <- data.frame(
+  size = c(50, 200, 500, 1000, 150, 300, 80, 600),
+  method = "Equal Probability",
+  prob = rep(1/8, 8)
+)
+
+combined <- rbind(clusters_pps, clusters_equal)
+
+ggplot(combined, aes(x = factor(size), y = prob, fill = method)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "PPS vs Equal Probability Selection",
+       x = "Cluster Size (households)", 
+       y = "Selection Probability") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#2E86AB", "#A23B72"))
+```
+
+---
+
+# The Total Survey Error Framework
+
+## Not Just Sampling Error!
+
+```{r tse_framework, echo=FALSE, fig.height=5}
+# Create TSE framework diagram
+tse_data <- data.frame(
+  component = c("Coverage\nError", "Sampling\nError", "Non-response\nError", 
+                "Measurement\nError", "Processing\nError"),
+  representation = c(3, 2, 4, 5, 1),
+  measurement = c(1, 0, 2, 5, 3),
+  y_pos = c(1, 2, 3, 4, 5)
+)
+
+ggplot(tse_data, aes(x = 0, y = y_pos)) +
+  geom_tile(aes(x = -1, width = 0.8, height = 0.8, fill = representation), 
+            color = "white", size = 2) +
+  geom_tile(aes(x = 1, width = 0.8, height = 0.8, fill = measurement), 
+            color = "white", size = 2) +
+  geom_text(aes(label = component), size = 4, fontface = "bold") +
+  scale_fill_gradient(low = "lightblue", high = "darkred", guide = "none") +
+  labs(title = "Total Survey Error Components",
+       subtitle = "All errors matter, not just sampling!") +
+  theme_void() +
+  annotate("text", x = -1, y = 6, label = "Representation", 
+           size = 5, fontface = "bold") +
+  annotate("text", x = 1, y = 6, label = "Measurement", 
+           size = 5, fontface = "bold")
+```
+
+---
+
+# Coverage Error: Who's Missing?
+
+## Harry's Coverage Challenges:
+
+.pull-left[
+### Under-coverage:
+- Nomadic populations
+- New settlements
+- Gated communities
+- Remote islands
+]
+
+.pull-right[
+### Over-coverage:
+- Demolished buildings
+- Deceased persons
+- Duplicate listings
+- Emigrated families
+]
+
+## Solutions:
+
+✓ Update frame regularly
+
+✓ Use multiple frame sources
+
+✓ Field verification
+
+✓ Post-survey adjustments
+
+---
+
+# Non-Response: The Silent Killer
+
+## Types of Non-Response
+
+```{r nonresponse_types, echo=FALSE}
+nr_types <- data.frame(
+  Type = c("Unit", "Item"),
+  Description = c("Entire HH refuses",
+                 "Specific Qs unanswered"),
+  Rate = c("10-30%", "1-15%"),
+  Impact = c("Reduces n", "Missing data"),
+  Solution = c("Weights", "Imputation")
+)
+
+kable(nr_types,
+      col.names = c("Type", "Description", "Typical Rate", 
+                   "Impact", "Solution")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12) %>%
+  column_spec(1, bold = TRUE)
+```
+
+## Harry's Strategy:
+1. Multiple visit attempts
+2. Flexible scheduling  
+3. Community sensitization
+4. Careful incentives
+5. Post-survey adjustments
+
+---
+
+# Measurement Error: Getting it Wrong
+
+## Common Sources:
+
+.pull-left[
+### Respondent Issues:
+- Memory errors
+- Social desirability bias
+- Misunderstanding questions
+- Deliberate misreporting
+]
+
+.pull-right[
+### Interviewer Effects:
+- Leading questions
+- Recording errors
+- Skipping patterns
+- Language barriers
+]
+
+```{r measurement_error, echo=TRUE}
+# Example: Income measurement error
+true_income <- 50000
+reported_income <- rnorm(100, 
+                        mean = true_income * 0.85,  # Underreporting
+                        sd = true_income * 0.15)     # Random error
+bias <- mean(reported_income) - true_income
+cat("Measurement bias:", round(bias), "\n")
+cat("Relative bias:", round(bias/true_income * 100, 1), "%")
+```
+
+---
+
+# Optimal Allocation: Neyman Allocation
+
+## Allocating Sample Across Strata
+
+Formula: **n_h = n × (N_h × S_h) / Σ(N_h × S_h)**
+
+```{r neyman_calc, echo=TRUE}
+# Harry applies Neyman allocation
+strata_info <- data.frame(
+  Stratum = c("Urban-High", "Urban-Low", 
+              "Rural-North", "Rural-South"),
+  N_h = c(200000, 300000, 800000, 700000),
+  S_h = c(15000, 8000, 5000, 6000)
+)
+
+strata_info$N_S <- strata_info$N_h * strata_info$S_h
+total_n <- 2000
+strata_info$n_h <- round(total_n * strata_info$N_S / 
+                         sum(strata_info$N_S))
+```
+
+```{r neyman_table, echo=FALSE}
+kable(strata_info[, c("Stratum", "N_h", "S_h", "n_h")],
+      col.names = c("Stratum", "Population", "Std Dev", "Sample"),
+      digits = 0) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 13)
+```
+
+---
+
+# Cost-Optimal Allocation
+
+## When Costs Vary by Stratum
+
+```{r cost_optimal_setup, echo=TRUE}
+# Include cost in allocation
+strata_info$Cost <- c(5, 4, 15, 10)  # USD per unit
+
+# Cost-optimal allocation formula
+strata_info$N_S_sqrtC <- strata_info$N_h * strata_info$S_h / 
+                         sqrt(strata_info$Cost)
+strata_info$n_cost <- round(total_n * strata_info$N_S_sqrtC / 
+                            sum(strata_info$N_S_sqrtC))
+```
+
+```{r cost_optimal_compare, echo=FALSE}
+# Create comparison table
+comparison <- data.frame(
+  Stratum = strata_info$Stratum,
+  Neyman = strata_info$n_h,
+  Cost_Opt = strata_info$n_cost,
+  Cost_Diff = (strata_info$n_cost - strata_info$n_h) * strata_info$Cost
+)
+
+kable(comparison, 
+      col.names = c("Stratum", "Neyman", "Cost-Optimal", "Cost Diff ($)"),
+      digits = 0) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 14)
+```
+
+---
+
+# Harry's Design Summary
+
+## Final Multi-Stage Stratified Cluster Design
+
+```{r design_summary, echo=FALSE}
+design_summary <- data.frame(
+  Component = c("Stratification", "Stage 1 (PSU)", "Stage 2 (SSU)", 
+                "Total Sample", "Design Effect", "Effective Sample"),
+  Urban = c("2 strata", "30 PSUs", "20 HH/PSU", "600 HH", 
+           "1.8", "333 HH"),
+  Rural = c("2 strata", "50 PSUs", "20 HH/PSU", "1000 HH",
+           "2.2", "455 HH")
+)
+
+kable(design_summary) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  row_spec(1, bold = TRUE, background = "#f0f0f0")
+```
+
+## Key Achievements:
+✓ Cost reduced by 65%
+
+✓ All domains represented
+
+✓ Acceptable precision
+
+✓ Operational feasibility
+
+---
+
+# Practical Exercise: Design Your Survey
+
+## Your Challenge (10 minutes):
+
+Design a sample for your country's next household survey:
+
+1. **Define your strata** (what variables?)
+2. **Choose cluster size** (consider costs vs precision)
+3. **Estimate your ICC** (based on past surveys)
+4. **Calculate sample size** needed for 3% margin of error
+
+## Work in groups of 3-4
+
+### Use this template:
+```{r exercise_template, eval=FALSE}
+# Your country: _______
+strata <- c("___", "___", "___")
+cluster_size <- ___
+expected_icc <- ___
+target_precision <- 0.03
+# Calculate required sample...
+```
+
+---
+
+# Weight Calculation Basics
+
+## Base Weights
+
+Every sampled unit needs a weight = inverse of selection probability
+
+```{r weight_calculation, echo=TRUE}
+# Calculate base weights for Harry's design
+# Stratum 1: Urban-Capital
+N1 <- 500000  # Population
+n1 <- 400     # Sample
+weight1 <- N1/n1
+cat("Urban-Capital weight:", weight1, "\n")
+
+# For multi-stage:
+# Weight = (1/Prob_Stage1) × (1/Prob_Stage2)
+PSU_prob <- 30/150  # 30 PSUs from 150
+HH_prob <- 20/500   # 20 HH from 500 in PSU
+weight_multistage <- 1/(PSU_prob * HH_prob)
+cat("Multi-stage weight:", weight_multistage)
+```
+
+---
+
+# Summary Statistics with Weights
+
+## Using the survey package
+
+```{r survey_package_demo, echo=TRUE, warning=FALSE}
+library(survey)
+
+# Create survey design object
+# Simulate Harry's data
+sim_data <- data.frame(
+  cluster = rep(1:50, each = 20),
+  stratum = rep(c("Urban", "Rural"), c(400, 600)),
+  weight = rep(c(250, 180), c(400, 600)),
+  income = rnorm(1000, mean = rep(c(60000, 35000), c(400, 600)), 
+                 sd = 10000)
+)
+
+# Specify survey design
+harry_design <- svydesign(
+  ids = ~cluster,
+  strata = ~stratum,
+  weights = ~weight,
+  data = sim_data
+)
+
+# Calculate weighted mean
+svymean(~income, harry_design)
+```
+
+---
+
+# Quick Review: What We've Covered
+
+## Core Concepts So Far:
+
+.pull-left[
+### Sampling Fundamentals:
+✓ Probability sampling principles
+
+✓ Simple random vs systematic
+
+✓ Stratification advantages
+
+✓ Cluster sampling economics
+
+✓ Multi-stage designs
+]
+
+.pull-right[
+### Technical Skills:
+✓ Design effect calculations
+
+✓ ICC interpretation
+
+✓ PPS sampling
+
+✓ Optimal allocation
+
+✓ Weight calculations
+]
+
+## Still More to Explore Today!
+
+We have many more slides covering:
+- Variance estimation techniques
+- Quality control procedures
+- Software demonstrations
+
+---
+
+# Interactive Break
+
+## Stand and Stretch! (2 minutes)
+
+While stretching, discuss with your neighbor:
+
+### What's the most challenging aspect of your current survey design?
+
+### What solution have you tried?
+
+.center[
+## Energy Check!
+
+### Stay engaged - the best learning is yet to come!
+]
+
+After the break, we'll dive into variance estimation...
+
+---
+
+# Variance Estimation in Complex Designs
+
+## Why Standard Formulas Fail
+
+.pull-left[
+### Simple Random Sample:
+- Independent observations
+- Standard error = s/√n
+- Nice, clean formulas
+]
+
+.pull-right[
+### Complex Designs:
+- Clustering increases variance
+- Stratification decreases variance
+- Weights complicate everything
+- Need special methods!
+]
+
+```{r variance_comparison, echo=FALSE, fig.height=3}
+# Compare variance under different designs
+set.seed(2025)
+designs <- data.frame(
+  Design = c("SRS", "Stratified", "Cluster", "Complex"),
+  Variance = c(100, 70, 180, 150),
+  SE = sqrt(c(100, 70, 180, 150))
+)
+
+ggplot(designs, aes(x = Design, y = SE, fill = Design)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Standard Error by Design Type",
+       y = "Standard Error") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#2E86AB", "#52B788", "#F18F01", "#A23B72"))
+```
+
+---
+
+# Taylor Linearization Method
+
+## The Workhorse of Variance Estimation
+
+Also called the "Delta Method" or "Taylor Series Method"
+
+```{r taylor_demo, echo=TRUE}
+# Using survey package with Taylor linearization
+library(survey)
+
+# Create complex survey design
+complex_design <- svydesign(
+  ids = ~cluster,      # Clustering
+  strata = ~stratum,   # Stratification  
+  weights = ~weight,   # Weights
+  data = sim_data
+)
+
+# Automatic variance estimation!
+mean_est <- svymean(~income, complex_design)
+print(mean_est)
+
+# Extract standard error
+SE(mean_est)
+```
+
+**Key:** Approximates non-linear statistics with linear functions
+
+---
+
+# Replication Methods Overview
+
+## When Taylor Fails, Replicate!
+
+```{r replication_methods, echo=FALSE}
+rep_methods <- data.frame(
+  Method = c("Jackknife", "Bootstrap", "BRR", "Fay's BRR"),
+  Best_For = c("General", "Any design", "2 PSUs/stratum", "Small samples"),
+  Replicates = c("n", "100-500", "L", "L"),
+  Pros = c("Simple", "Flexible", "Exact", "Stable"),
+  Cons = c("Many reps", "Computational", "Restrictive", "Complex")
+)
+
+kable(rep_methods, 
+      col.names = c("Method", "Best For", "# Replicates", "Pros", "Cons")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 11) %>%
+  column_spec(1, bold = TRUE)
+```
+
+## Harry's Choice:
+- **Jackknife** for general estimates
+- **Bootstrap** for percentiles
+- **BRR** when design permits
+
+---
+
+# Jackknife Variance Estimation
+
+## Leave-One-Out Approach
+
+```{r jackknife_demo, echo=TRUE}
+# Convert to jackknife design
+jk_design <- as.svrepdesign(
+  complex_design,
+  type = "JKn"  # Delete-1 jackknife
+)
+
+# Compare results
+svymean(~income, jk_design)  # Same estimate, different SE
+```
+
+```{r jackknife_visual, echo=FALSE, fig.height=3}
+# Visualize jackknife process
+set.seed(2025)
+jk_ests <- rnorm(50, mean = 45000, sd = 500)
+jk_data <- data.frame(
+  Replicate = 1:50,
+  Estimate = jk_ests
+)
+
+ggplot(jk_data, aes(x = Replicate, y = Estimate)) +
+  geom_point(color = "#2E86AB") +
+  geom_hline(yintercept = mean(jk_ests), color = "red", linetype = "dashed") +
+  labs(title = "Jackknife Replicate Estimates",
+       subtitle = "Each point = estimate with one PSU removed") +
+  theme_minimal()
+```
+
+---
+
+# Bootstrap for Complex Surveys
+
+## Resampling with Replacement
+
+```{r bootstrap_setup, echo=TRUE}
+# Create bootstrap weights
+boot_design <- as.svrepdesign(
+  complex_design,
+  type = "bootstrap",
+  replicates = 100
+)
+
+# Calculate confidence intervals
+income_ci <- svyquantile(~income, boot_design, 
+                         c(0.025, 0.975))
+print(income_ci)
+```
+
+.pull-left[
+### Advantages:
+- Works for any statistic
+- Captures full distribution
+- Handles percentiles well
+]
+
+.pull-right[
+### Considerations:
+- Computationally intensive
+- Need many replicates (100+)
+- Must respect survey design
+]
+
+---
+
+# Balanced Repeated Replication (BRR)
+
+## Hadamard Matrix Magic
+
+```{r brr_example, echo=TRUE}
+# BRR requires exactly 2 PSUs per stratum
+# Create appropriate design with paired PSUs
+set.seed(2025)
+brr_data <- data.frame(
+  psu = rep(1:8, each = 25),  # 8 PSUs total
+  stratum = rep(1:4, each = 50),  # 4 strata, 2 PSUs each
+  weight = rep(100, 200),
+  income = rnorm(200, 45000, 10000)
+)
+
+brr_design <- svydesign(
+  ids = ~psu,
+  strata = ~stratum,
+  weights = ~weight,
+  data = brr_data
+)
+
+# Convert to BRR - now works!
+brr_rep <- as.svrepdesign(brr_design, type = "BRR")
+svymean(~income, brr_rep)
+```
+
+**Key:** Exactly 2 PSUs per stratum required!
+
+---
+
+# Finite Population Correction
+
+## When Sampling Fraction is Large
+
+```{r fpc_demo, echo=TRUE}
+# Include finite population correction
+N_stratum <- c(Urban = 100000, Rural = 200000)
+n_stratum <- c(Urban = 5000, Rural = 8000)
+fpc_factor <- 1 - n_stratum/N_stratum
+
+print(fpc_factor)
+
+# Apply in design - create data with FPC
+fpc_data <- sim_data
+fpc_data$fpc_size <- ifelse(fpc_data$stratum == "Urban", 
+                            100000, 200000)
+
+design_with_fpc <- svydesign(
+  ids = ~cluster,
+  strata = ~stratum,
+  weights = ~weight,
+  fpc = ~fpc_size,  # Population size per stratum
+  data = fpc_data
+)
+
+# Compare standard errors
+SE(svymean(~income, complex_design))  # Without FPC
+SE(svymean(~income, design_with_fpc)) # With FPC
+```
+
+**Rule:** Use FPC when sampling >5% of population
+
+---
+
+# Quality Assurance Framework
+
+## Harry's Quality Control System
+
+```{r quality_framework, echo=FALSE, fig.height=4}
+# Create quality framework diagram
+quality_stages <- data.frame(
+  Stage = factor(c("Design", "Training", "Field", "Processing", "Analysis"),
+                 levels = c("Design", "Training", "Field", "Processing", "Analysis")),
+  Activities = c(5, 3, 6, 4, 3),
+  Errors_Prevented = c(30, 20, 35, 10, 5)
+)
+
+ggplot(quality_stages, aes(x = Stage, y = Errors_Prevented, fill = Stage)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Error Prevention by Survey Stage",
+       subtitle = "Percentage of total errors prevented",
+       y = "% Errors Prevented") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#2E86AB", "#52B788", "#F18F01", "#A23B72", "#C77DFF")) +
+  theme(legend.position = "none")
+```
+
+**Key Message:** Most errors can be prevented before data collection!
+
+---
+
+# Pre-Field Quality Checks
+
+## Harry's Checklist
+
+.pull-left[
+### Frame Quality:
+☑ Coverage assessment
+
+☑ Duplicate detection
+
+☑ Update verification
+
+☑ GPS coordinate validation
+]
+
+.pull-right[
+### Instrument Testing:
+☑ Cognitive interviews
+
+☑ Pilot testing
+
+☑ Skip pattern verification
+
+☑ Translation back-check
+]
+
+```{r pilot_results, echo=FALSE}
+pilot_issues <- data.frame(
+  Issue = c("Unclear questions", "Skip errors", "Translation", "Length"),
+  Count = c(12, 8, 5, 3),
+  Fixed = c("Yes", "Yes", "Yes", "Partial")
+)
+
+kable(pilot_issues, col.names = c("Issue Type", "Problems Found", "Fixed?")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12)
+```
+
+---
+
+# Field Monitoring Dashboard
+
+## Real-Time Quality Control
+
+```{r monitoring_dashboard, echo=FALSE, fig.height=4}
+# Simulate monitoring data
+set.seed(2025)
+days <- 1:20
+interviews <- cumsum(rpois(20, 80))
+response_rate <- 75 + rnorm(20, 0, 3)
+
+par(mfrow = c(1, 2))
+plot(days, interviews, type = "l", lwd = 2, col = "#2E86AB",
+     main = "Cumulative Interviews", xlab = "Day", ylab = "Count")
+abline(h = 1600, lty = 2, col = "red")
+
+plot(days, response_rate, type = "l", lwd = 2, col = "#52B788",
+     main = "Daily Response Rate", xlab = "Day", ylab = "Percent",
+     ylim = c(65, 85))
+abline(h = 70, lty = 2, col = "red")
+```
+
+**Alert Triggers:**
+- Response rate < 70%
+- Interview length outliers
+- GPS outside PSU bounds
+
+---
+
+# Data Validation Rules
+
+## Automated Quality Checks
+
+```{r validation_setup, echo=TRUE}
+# Example validation rules
+validate_household <- function(data) {
+  checks <- list(
+    age_valid = all(data$age >= 0 & data$age <= 120),
+    hh_size = all(data$hh_size >= 1 & data$hh_size <= 30),
+    income_ok = all(data$expense <= data$income * 1.5),
+    complete = sum(is.na(data)) / length(data) < 0.05
+  )
+  return(checks)
+}
+```
+
+```{r validation_test, echo=TRUE}
+# Test with sample data
+test_data <- data.frame(
+  age = c(25, 45, 150, 30),  # One invalid
+  hh_size = c(4, 3, 5, 2),
+  income = c(1000, 2000, 1500, 3000),
+  expense = c(900, 1800, 2000, 2800)
+)
+
+validate_household(test_data)
+```
+
+---
+
+# Interviewer Performance Metrics
+
+## Identifying Problems Early
+
+```{r interviewer_metrics, echo=FALSE}
+# Simulate interviewer performance
+set.seed(2025)
+interviewers <- data.frame(
+  ID = paste0("INT", 1:8),
+  Completed = c(45, 42, 38, 51, 43, 28, 44, 47),
+  Avg_Duration = c(35, 38, 42, 25, 36, 48, 37, 34),
+  Response_Rate = c(78, 75, 73, 82, 76, 65, 77, 79),
+  Flag = c("OK", "OK", "OK", "Fast", "OK", "Issues", "OK", "OK")
+)
+
+kable(interviewers, 
+      col.names = c("Interviewer", "Completed", "Avg Duration (min)", 
+                   "Response Rate (%)", "Status")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 11) %>%
+  row_spec(which(interviewers$Flag != "OK"), bold = TRUE, 
+           color = "white", background = "#F18F01")
+```
+
+**Action Required:** Retrain INT004 (too fast) and INT006 (low response)
+
+---
+
+# Non-Response Analysis
+
+## Understanding Who's Missing
+
+```{r nonresponse_analysis, echo=TRUE}
+# Analyze non-response patterns
+response_data <- data.frame(
+  stratum = rep(c("Urban", "Rural"), each = 100),
+  responded = c(rbinom(100, 1, 0.75), rbinom(100, 1, 0.68)),
+  income_cat = sample(c("Low", "Med", "High"), 200, replace = TRUE)
+)
+
+# Response rates by stratum
+response_by_stratum <- response_data %>%
+  group_by(stratum) %>%
+  summarise(
+    response_rate = mean(responded),
+    n = n()
+  )
+
+print(response_by_stratum)
+```
+
+**Key Finding:** Rural areas have lower response - need adjustment!
+
+---
+
+# Post-Survey Weight Adjustments
+
+## Correcting for Non-Response
+
+```{r weight_adjustment, echo=TRUE}
+# Base weights
+base_weight <- 1000
+
+# Non-response adjustment
+response_rate <- 0.72
+nr_adjusted_weight <- base_weight / response_rate
+
+# Post-stratification to known totals
+known_total <- 2200000
+sample_total <- sum(sim_data$weight)
+ps_factor <- known_total / sample_total
+
+final_weight <- nr_adjusted_weight * ps_factor
+
+cat("Base weight:", base_weight, "\n")
+cat("NR-adjusted:", nr_adjusted_weight, "\n")
+cat("Final weight:", final_weight)
+```
+
+---
+
+# Calibration and Raking (1/2)
+
+## Setting Up Population Totals
+
+```{r calibration_setup, echo=TRUE, eval=FALSE}
+# Calibration to known population totals
+library(survey)
+
+# Add gender to our data for demonstration
+cal_data <- sim_data
+cal_data$gender <- sample(c("male", "female"), 
+                          nrow(cal_data), replace = TRUE)
+
+# Create survey design
+cal_design <- svydesign(
+  ids = ~cluster,
+  strata = ~stratum,
+  weights = ~weight,
+  data = cal_data
+)
+
+# Known population totals (example)
+pop.totals <- list(
+  stratum = c(Urban = 800000, Rural = 1400000)
+)
+```
+
+---
+
+# Calibration and Raking (2/2)
+
+## Applying Calibration
+
+```{r calibration_apply, echo=TRUE, eval=FALSE}
+# Calibrate weights to match population
+calibrated_design <- calibrate(
+  cal_design,
+  formula = ~factor(stratum),
+  population = pop.totals
+)
+
+# Check calibration worked
+svytotal(~factor(stratum), calibrated_design)
+
+# For raking (iterative proportional fitting)
+# Use rake() function for multiple margins
+# raked_design <- rake(cal_design, 
+#                      list(~stratum, ~gender),
+#                      list(pop.stratum, pop.gender))
+```
+
+**Benefits:** 
+- Reduces bias from non-response
+- Improves precision of estimates
+- Ensures consistency with known totals
+
+---
+
+# Documentation Standards
+
+## Harry's Documentation System
+
+.pull-left[
+### Technical Documentation:
+1. Sampling design report
+2. Operations manual
+3. Quality control logs
+4. Weight calculation syntax
+]
+
+.pull-right[
+### Public Documentation:
+1. Methodology report
+2. Quality indicators
+3. Response rate tables
+4. Standard error tables
+]
+
+```{r documentation_template, eval=FALSE}
+# Standard documentation template
+survey_metadata <- list(
+  survey_name = "National Household Survey 2025",
+  sample_size = 1600,
+  response_rate = 0.72,
+  design_effect = 1.95,
+  cv_income = 0.03,
+  field_dates = "March 1-31, 2025"
+)
+
+# Save as JSON for archival
+jsonlite::write_json(survey_metadata, 
+                     "survey_metadata_2025.json")
+```
+
+---
+
+# Coefficient of Variation (CV)
+
+## Reliability Indicator
+
+```{r cv_calculation, echo=TRUE}
+# Calculate CV for key estimates
+estimates <- svyby(~income, ~stratum, complex_design, svymean)
+estimates$cv <- SE(estimates) / estimates$income * 100
+
+print(estimates)
+```
+
+```{r cv_standards, echo=FALSE}
+cv_interpret <- data.frame(
+  CV_Range = c("< 5%", "5-10%", "10-15%", "15-20%", "> 20%"),
+  Quality = c("Excellent", "Very Good", "Good", "Use with caution", "Unreliable"),
+  Color = c("green", "lightgreen", "yellow", "orange", "red")
+)
+
+kable(cv_interpret, col.names = c("CV Range", "Quality", "Flag")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12)
+```
+
+---
+
+# Effective Sample Size Reporting
+
+## What Users Need to Know
+
+```{r effective_sample, echo=TRUE}
+# Report effective sample sizes
+report_table <- data.frame(
+  Domain = c("National", "Urban", "Rural", "Capital"),
+  Actual_n = c(1600, 600, 1000, 200),
+  Design_Effect = c(1.95, 1.80, 2.20, 1.65),
+  Effective_n = round(c(1600, 600, 1000, 200) / 
+                      c(1.95, 1.80, 2.20, 1.65)),
+  CV_Income = c(2.8, 3.5, 4.2, 4.8)
+)
+
+kable(report_table, 
+      col.names = c("Domain", "Sample Size", "DEFF", 
+                   "Effective n", "CV(%)")) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12) %>%
+  column_spec(4, bold = TRUE)
+```
+
+**User Guidance:** Use effective n for precision calculations
+
+---
+
+# Software Comparison
+
+## R vs STATA vs Python
+
+```{r software_comparison, echo=FALSE}
+software <- data.frame(
+  Feature = c("Survey Package", "Graphics", "Speed", 
+             "Learning Curve", "Cost", "Community"),
+  R = c("Excellent", "Excellent", "Good", "Moderate", "Free", "Large"),
+  STATA = c("Excellent", "Good", "Very Good", "Easy", "$$$$", "Medium"),
+  Python = c("Growing", "Excellent", "Excellent", "Steep", "Free", "Huge")
+)
+
+kable(software) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 11) %>%
+  column_spec(2, background = "#E8F5E9") %>%
+  column_spec(3, background = "#FFF3E0") %>%
+  column_spec(4, background = "#E3F2FD")
+```
+
+## Harry's Recommendation:
+- **R** for analysis and reporting
+- **STATA** for team familiarity
+- **Python** for automation
+
+---
+
+# R Survey Package Deep Dive
+
+## Essential Functions
+
+```{r survey_functions, echo=TRUE, eval=FALSE}
+# Key survey package functions
+# Design specification
+svydesign()      # Specify complex design
+svrepdesign()    # Replicate weights
+
+# Estimation
+svymean()        # Means with SE
+svytotal()       # Totals with SE
+svyquantile()    # Percentiles
+svyby()          # Domain estimation
+svyglm()         # Regression models
+
+# Variance estimation
+as.svrepdesign() # Convert to replicate
+svycontrast()    # Linear combinations
+svyvar()         # Variance estimation
+```
+
+**Pro tip:** Always check your design object with `summary()`!
+
+---
+
+# Review: Day 1 Progress Check
+
+## What Harry Has Accomplished
+
+.pull-left[
+### Morning Sessions:
+✅ Basic concepts review
+
+✅ Stratification design
+
+✅ Cluster sampling
+
+✅ Design effects
+
+✅ Multi-stage design
+]
+
+.pull-right[
+### Afternoon Sessions:
+✅ Total Survey Error
+
+✅ Optimal allocation
+
+✅ Variance estimation
+
+✅ Quality control
+
+✅ Software tools
+]
+
+## Still Ahead Today:
+- Case studies
+- Group exercises
+- Advanced R techniques
+- Q&A session
+
+
